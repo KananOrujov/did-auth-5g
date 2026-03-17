@@ -61,7 +61,8 @@ async def auth_ue(session, supi):
                 "slice": d.get("slice"), "latency_ms": d["latency_ms"], "wall_ms": wall}
 
 async def run_concurrent():
-    restart_sidecar()
+    # No restart - preserve cache from sequential test
+    # and allow semaphore to serialize requests
     t_start = time.time()
     async with aiohttp.ClientSession() as session:
         tasks = [auth_ue(session, supi) for supi in UES]

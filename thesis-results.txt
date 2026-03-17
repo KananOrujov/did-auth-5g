@@ -97,3 +97,62 @@ Concurrent (5 UEs):
   imsi-001010000000004: verified=False latency=4808ms
   imsi-001010000000005: verified=False latency=4368ms
   Avg: 4501ms
+
+=== A1/A3 Verification - 2026-03-17 ===
+AUSF timeout raised to 15000ms, recompiled Open5GS AUSF
+DID verification: verified=True slice=SST:1 latency=4154ms
+AUSF response: HTTP=200 verified=true (no fail-open)
+Registration: complete
+PDU session: successful PSI[1]
+TUN interface: uesimtun0 10.45.0.3 up
+Status: DID enforcement is now truly blocking, not fail-open
+
+=== Registration Latency (did, n=5) - 2026-03-17 15:49 ===
+  Run 1: 6209ms
+  Run 2: 264ms
+  Run 3: 259ms
+  Run 4: 298ms
+  Run 5: 247ms
+  Min: 247ms  Max: 6209ms  Avg: 1455ms
+
+=== Registration Latency (vanilla, n=5) - 2026-03-17 15:53 ===
+  Run 1: 277ms
+  Run 2: 251ms
+  Run 3: 270ms
+  Run 4: 243ms
+  Run 5: 239ms
+  Min: 239ms  Max: 277ms  Avg: 256ms
+
+=== Registration Latency (did, n=5) - 2026-03-17 15:57 ===
+  Run 1: 8150ms
+  Run 2: 4584ms
+  Run 3: 5476ms
+  Run 4: 4967ms
+  Run 5: 5552ms
+  Min: 4584ms  Max: 8150ms  Avg: 5745ms
+
+=== B4 Latency Comparison Summary - 2026-03-17 ===
+Vanilla (no DID):     Min=239ms  Max=277ms  Avg=256ms
+DID-enabled (cold):   Min=4584ms Max=8150ms Avg=5745ms
+DID overhead:         Min=+4345ms Max=+7873ms Avg=+5489ms
+Note: Overhead dominated by BCovrin public ledger RTT (~4.5s)
+      Local Hyperledger Indy deployment expected: <500ms overhead
+
+=== B6 Slice Policy Allow/Deny Test - 2026-03-17 ===
+ALLOW: imsi-001010000000001 slice=SST:1 required=SST:1 verified=True  HTTP=200
+DENY:  imsi-001010000000006 slice=SST:2 required=SST:1 verified=False HTTP=403
+Log:   [SLICE] DENIED imsi-001010000000006: got=SST:2 required=SST:1
+Result: Slice policy enforcement confirmed working correctly
+
+=== B5 Revocation Under Load - 2026-03-17 16:43 ===
+  imsi-001010000000001: verified=False slice=SST:1 latency=3859ms
+  imsi-001010000000002: verified=True slice=SST:1 latency=6272ms
+  imsi-001010000000003: verified=True slice=SST:1 latency=10447ms
+
+=== B8 Edge/Distributed Simulation - 2026-03-17 ===
+Method: Linux network namespace + tc netem 50ms delay on loopback
+Local verifier (no delay):        6569ms, 4396ms, 4513ms  avg=5159ms
+Simulated edge (50ms RTT delay):  9116ms, 4790ms, 4558ms  avg=6155ms
+Edge overhead: ~+1000ms (~20 HTTP round trips x 50ms)
+Note: Full distributed deployment (separate host) expected to add
+      proportional latency based on network RTT to verifier

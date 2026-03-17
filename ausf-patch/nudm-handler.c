@@ -47,8 +47,8 @@ static bool did_auth_check(const char *supi)
     curl_easy_setopt(curl, CURLOPT_URL, "http://127.0.0.1:5000/did-auth");
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, post_body);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, 500L);
-    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, 200L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, 6000L);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, 500L);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, did_auth_discard);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, NULL);
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);

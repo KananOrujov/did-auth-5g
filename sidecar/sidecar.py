@@ -18,22 +18,45 @@ HOLDER_URL    = "http://localhost:8031"
 CRED_DEF_ID   = "QTbY98psM6bDviJj9A6JLU:3:CL:3132200:revocable"
 VERIFIER_CONN = "4a229530-2c7c-4202-a762-f3c84bcfa45e"
 CACHE_TTL     = 300
+_supi_locks = {}
+_global_proof_semaphore = None
+
+def get_supi_lock(supi):
+    if supi not in _supi_locks:
+        _supi_locks[supi] = asyncio.Lock()
+    return _supi_locks[supi]
+
+def get_semaphore():
+    global _global_proof_semaphore
+    if _global_proof_semaphore is None:
+        _global_proof_semaphore = asyncio.Semaphore(1)
+    return _global_proof_semaphore
 
 SLICE_POLICY = {
     "imsi-001010000000001": "SST:1",
     "imsi-001010000000002": "SST:1",
     "imsi-001010000000003": "SST:1",
+    "imsi-001010000000004": "SST:1",
+    "imsi-001010000000005": "SST:1",
+    "imsi-001010000000006": "SST:1",
 }
 
 SUPI_CRED_MAP = {
     "imsi-001010000000001": "5192e3ea-78ef-4593-b648-3ce5f2e60170",
-    "imsi-001010000000002": "5192e3ea-78ef-4593-b648-3ce5f2e60170",
-    "imsi-001010000000003": "5192e3ea-78ef-4593-b648-3ce5f2e60170",
+    "imsi-001010000000002": "40dd6224-bb79-4350-8953-8e257d63db31",
+    "imsi-001010000000003": "30a67241-eba2-47d9-838e-8252b351a66d",
+    "imsi-001010000000004": "1ab7dcfc-4eb6-4318-a8b7-311b3bc47723",
+    "imsi-001010000000005": "ee84735e-5282-4f46-9353-64aac032072f",
+    "imsi-001010000000006": "95d3fb40-e671-4347-a2d4-973d2a89fef4",
 }
 
 did_cache = {}
 
 async def run_did_verification(supi):
+    async with get_semaphore():
+        await _run_did_verification_inner(supi)
+
+async def _run_did_verification_inner(supi):
     t_start = time.time()
     cred_ref = SUPI_CRED_MAP.get(supi, list(SUPI_CRED_MAP.values())[0])
     required_slice = SLICE_POLICY.get(supi, "SST:1")
@@ -69,7 +92,9 @@ async def run_did_verification(supi):
                     records = (await r.json()).get("results", [])
                     pending = [x for x in records if x["state"] == "request_received"]
                     if pending:
-                        pex_h = pending[0]["presentation_exchange_id"]
+                        # Match by thread_id to avoid race conditions between concurrent UEs
+                        matched = [x for x in pending if x.get("thread_id") == pex_id]
+                        pex_h = (matched[0] if matched else pending[0])["presentation_exchange_id"]
                         # Let holder auto-select matching attributes
                         async with session.get(
                             f"{HOLDER_URL}/present-proof/records/{pex_h}/credentials"
@@ -81,10 +106,16 @@ async def run_did_verification(supi):
                         for item in cred_list:
                             for ref in item.get("presentation_referents", []):
                                 if ref not in req_attrs:
-                                    req_attrs[ref] = {
-                                        "cred_id": item["cred_info"]["referent"],
-                                        "revealed": True
-                                    }
+                                    item_cred_id = item["cred_info"]["referent"]
+                                    # Prefer the credential matching SUPI_CRED_MAP
+                                    if item_cred_id == cred_ref or ref not in req_attrs:
+                                        req_attrs[ref] = {
+                                            "cred_id": item_cred_id,
+                                            "revealed": True
+                                        }
+                        # Override with exact credential from SUPI_CRED_MAP
+                        for ref in list(req_attrs.keys()):
+                            req_attrs[ref]["cred_id"] = cred_ref
 
                         await session.post(
                             f"{HOLDER_URL}/present-proof/records/{pex_h}/send-presentation",
@@ -140,6 +171,7 @@ async def run_did_verification(supi):
 
     except Exception as e:
         log.error(f"[BG] Error for {supi}: {e}")
+
 
 
 async def handle_did_auth(request):
