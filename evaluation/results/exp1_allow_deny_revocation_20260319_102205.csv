@@ -1,0 +1,4 @@
+final_decision,proof_verified,revocation_ok,policy_allowed,reason,supi,slice,cache_hit,timings_ms,latency_ms,wall_ms,http_status,experiment
+True,True,True,True,all_checks_passed,imsi-001010000000002,SST:1,False,"{'proof_request_ms': 502, 'holder_response_ms': 3467, 'verification_ms': 3873, 'total_ms': 7845}",7854,7889,200,allow_case
+False,True,True,False,slice_policy_denied: got=SST:2 required=SST:1,imsi-001010000000006,SST:2,False,"{'proof_request_ms': 474, 'holder_response_ms': 2659, 'verification_ms': 2477, 'total_ms': 5616}",5619,5689,403,slice_deny_case
+False,False,False,True,proof_verification_failed,imsi-001010000000001,SST:1,False,"{'proof_request_ms': 25, 'holder_response_ms': 1510, 'verification_ms': 3138, 'total_ms': 4676}",4681,4697,403,revocation_deny_case

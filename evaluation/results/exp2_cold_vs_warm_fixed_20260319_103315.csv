@@ -1,0 +1,11 @@
+experiment,run,final_decision,latency_ms,total_ms,proof_request_ms,holder_response_ms,verification_ms,cache_hit
+cold_latency,1,True,5027,5026,41,1861,3122,False
+cold_latency,2,True,4636,4635,17,2200,2417,False
+cold_latency,3,True,4369,4368,13,1339,3014,False
+cold_latency,4,True,4767,4765,17,1626,3120,False
+cold_latency,5,True,4491,4489,14,2013,2461,False
+warm_latency,1,True,0,,,,,True
+warm_latency,2,True,0,,,,,True
+warm_latency,3,True,0,,,,,True
+warm_latency,4,True,0,,,,,True
+warm_latency,5,True,0,,,,,True

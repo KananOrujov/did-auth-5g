@@ -1,0 +1,62 @@
+[
+  {
+    "final_decision": true,
+    "proof_verified": true,
+    "revocation_ok": true,
+    "policy_allowed": true,
+    "reason": "all_checks_passed",
+    "supi": "imsi-001010000000002",
+    "slice": "SST:1",
+    "cache_hit": false,
+    "timings_ms": {
+      "proof_request_ms": 502,
+      "holder_response_ms": 3467,
+      "verification_ms": 3873,
+      "total_ms": 7845
+    },
+    "latency_ms": 7854,
+    "wall_ms": 7889,
+    "http_status": 200,
+    "experiment": "allow_case"
+  },
+  {
+    "final_decision": false,
+    "proof_verified": true,
+    "revocation_ok": true,
+    "policy_allowed": false,
+    "reason": "slice_policy_denied: got=SST:2 required=SST:1",
+    "supi": "imsi-001010000000006",
+    "slice": "SST:2",
+    "cache_hit": false,
+    "timings_ms": {
+      "proof_request_ms": 474,
+      "holder_response_ms": 2659,
+      "verification_ms": 2477,
+      "total_ms": 5616
+    },
+    "latency_ms": 5619,
+    "wall_ms": 5689,
+    "http_status": 403,
+    "experiment": "slice_deny_case"
+  },
+  {
+    "final_decision": false,
+    "proof_verified": false,
+    "revocation_ok": false,
+    "policy_allowed": true,
+    "reason": "proof_verification_failed",
+    "supi": "imsi-001010000000001",
+    "slice": "SST:1",
+    "cache_hit": false,
+    "timings_ms": {
+      "proof_request_ms": 25,
+      "holder_response_ms": 1510,
+      "verification_ms": 3138,
+      "total_ms": 4676
+    },
+    "latency_ms": 4681,
+    "wall_ms": 4697,
+    "http_status": 403,
+    "experiment": "revocation_deny_case"
+  }
+]

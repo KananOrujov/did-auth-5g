@@ -1,0 +1,112 @@
+[
+  {
+    "experiment": "cold_latency",
+    "run": 1,
+    "final_decision": true,
+    "latency_ms": 5027,
+    "total_ms": 5026,
+    "proof_request_ms": 41,
+    "holder_response_ms": 1861,
+    "verification_ms": 3122,
+    "cache_hit": false
+  },
+  {
+    "experiment": "cold_latency",
+    "run": 2,
+    "final_decision": true,
+    "latency_ms": 4636,
+    "total_ms": 4635,
+    "proof_request_ms": 17,
+    "holder_response_ms": 2200,
+    "verification_ms": 2417,
+    "cache_hit": false
+  },
+  {
+    "experiment": "cold_latency",
+    "run": 3,
+    "final_decision": true,
+    "latency_ms": 4369,
+    "total_ms": 4368,
+    "proof_request_ms": 13,
+    "holder_response_ms": 1339,
+    "verification_ms": 3014,
+    "cache_hit": false
+  },
+  {
+    "experiment": "cold_latency",
+    "run": 4,
+    "final_decision": true,
+    "latency_ms": 4767,
+    "total_ms": 4765,
+    "proof_request_ms": 17,
+    "holder_response_ms": 1626,
+    "verification_ms": 3120,
+    "cache_hit": false
+  },
+  {
+    "experiment": "cold_latency",
+    "run": 5,
+    "final_decision": true,
+    "latency_ms": 4491,
+    "total_ms": 4489,
+    "proof_request_ms": 14,
+    "holder_response_ms": 2013,
+    "verification_ms": 2461,
+    "cache_hit": false
+  },
+  {
+    "experiment": "warm_latency",
+    "run": 1,
+    "final_decision": true,
+    "latency_ms": 0,
+    "total_ms": null,
+    "proof_request_ms": null,
+    "holder_response_ms": null,
+    "verification_ms": null,
+    "cache_hit": true
+  },
+  {
+    "experiment": "warm_latency",
+    "run": 2,
+    "final_decision": true,
+    "latency_ms": 0,
+    "total_ms": null,
+    "proof_request_ms": null,
+    "holder_response_ms": null,
+    "verification_ms": null,
+    "cache_hit": true
+  },
+  {
+    "experiment": "warm_latency",
+    "run": 3,
+    "final_decision": true,
+    "latency_ms": 0,
+    "total_ms": null,
+    "proof_request_ms": null,
+    "holder_response_ms": null,
+    "verification_ms": null,
+    "cache_hit": true
+  },
+  {
+    "experiment": "warm_latency",
+    "run": 4,
+    "final_decision": true,
+    "latency_ms": 0,
+    "total_ms": null,
+    "proof_request_ms": null,
+    "holder_response_ms": null,
+    "verification_ms": null,
+    "cache_hit": true
+  },
+  {
+    "experiment": "warm_latency",
+    "run": 5,
+    "final_decision": true,
+    "latency_ms": 0,
+    "total_ms": null,
+    "proof_request_ms": null,
+    "holder_response_ms": null,
+    "verification_ms": null,
+    "cache_hit": true
+  }
+]

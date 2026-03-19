@@ -48,6 +48,30 @@ SUPI_CRED_MAP = {
     "imsi-001010000000006": "95d3fb40-e671-4347-a2d4-973d2a89fef4",
 }
 
+
+BLOCKED_SUPIS_FILE = "/var/tmp/blocked_ues.txt"
+UE_IP_MAP_FILE     = "/var/tmp/ue_ip_map.txt"
+
+def update_enforcement_files(supi, final_decision):
+    """Write denied SUPIs to blocked file for UPF enforcer."""
+    try:
+        # Read current blocked list
+        try:
+            blocked = set(open(BLOCKED_SUPIS_FILE).read().splitlines())
+        except FileNotFoundError:
+            blocked = set()
+
+        if not final_decision:
+            blocked.add(supi)
+        else:
+            blocked.discard(supi)  # Remove from blocked if now allowed
+
+        with open(BLOCKED_SUPIS_FILE, 'w') as f:
+            f.write('\n'.join(sorted(blocked)) + ('\n' if blocked else ''))
+        log.info(f"[ENFORCE] {'BLOCKED' if not final_decision else 'UNBLOCKED'} {supi} -> {BLOCKED_SUPIS_FILE}")
+    except Exception as e:
+        log.error(f"[ENFORCE] Failed to update enforcement files: {e}")
+
 did_cache = {}
 
 def structured_log(supi, decision, reason, proof_verified, revocation_ok,
@@ -227,6 +251,7 @@ def _store_cache(supi, final_decision, proof_verified, revocation_ok,
     }
     structured_log(supi, final_decision, reason, proof_verified, revocation_ok,
                    policy_allowed, slice_value, False, timings)
+    update_enforcement_files(supi, final_decision)
 
 async def handle_did_auth(request):
     t_start = time.time()

@@ -1,0 +1,5 @@
+experiment,supi,final_decision,reason,total_ms,wall_ms,proof_verified,cache_hit
+concurrent,imsi-001010000000002,True,all_checks_passed,3447,9589,True,False
+concurrent,imsi-001010000000003,True,all_checks_passed,3967,3971,True,False
+concurrent,imsi-001010000000004,True,all_checks_passed,2016,11603,True,False
+concurrent,imsi-001010000000005,True,all_checks_passed,2164,6137,True,False

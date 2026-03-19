@@ -1,0 +1,42 @@
+[
+  {
+    "experiment": "multi_ue_sequential",
+    "supi": "imsi-001010000000002",
+    "final_decision": true,
+    "reason": "all_checks_passed",
+    "total_ms": 4708,
+    "proof_verified": true,
+    "policy_allowed": true,
+    "slice": "SST:1"
+  },
+  {
+    "experiment": "multi_ue_sequential",
+    "supi": "imsi-001010000000003",
+    "final_decision": true,
+    "reason": "all_checks_passed",
+    "total_ms": 2198,
+    "proof_verified": true,
+    "policy_allowed": true,
+    "slice": "SST:1"
+  },
+  {
+    "experiment": "multi_ue_sequential",
+    "supi": "imsi-001010000000004",
+    "final_decision": true,
+    "reason": "all_checks_passed",
+    "total_ms": 5392,
+    "proof_verified": true,
+    "policy_allowed": true,
+    "slice": "SST:1"
+  },
+  {
+    "experiment": "multi_ue_sequential",
+    "supi": "imsi-001010000000005",
+    "final_decision": true,
+    "reason": "all_checks_passed",
+    "total_ms": 2801,
+    "proof_verified": true,
+    "policy_allowed": true,
+    "slice": "SST:1"
+  }
+]

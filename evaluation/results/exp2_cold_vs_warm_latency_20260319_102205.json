@@ -1,0 +1,112 @@
+[
+  {
+    "experiment": "cold_latency",
+    "run": 1,
+    "supi": "imsi-001010000000002",
+    "final_decision": true,
+    "proof_request_ms": 17,
+    "holder_response_ms": 1899,
+    "verification_ms": 2338,
+    "total_ms": 4254,
+    "cache_hit": false
+  },
+  {
+    "experiment": "cold_latency",
+    "run": 2,
+    "supi": "imsi-001010000000002",
+    "final_decision": true,
+    "proof_request_ms": 14,
+    "holder_response_ms": 1417,
+    "verification_ms": 3748,
+    "total_ms": 5181,
+    "cache_hit": false
+  },
+  {
+    "experiment": "cold_latency",
+    "run": 3,
+    "supi": "imsi-001010000000002",
+    "final_decision": true,
+    "proof_request_ms": 14,
+    "holder_response_ms": 1972,
+    "verification_ms": 2327,
+    "total_ms": 4313,
+    "cache_hit": false
+  },
+  {
+    "experiment": "cold_latency",
+    "run": 4,
+    "supi": "imsi-001010000000002",
+    "final_decision": true,
+    "proof_request_ms": 16,
+    "holder_response_ms": 2035,
+    "verification_ms": 2389,
+    "total_ms": 4441,
+    "cache_hit": false
+  },
+  {
+    "experiment": "cold_latency",
+    "run": 5,
+    "supi": "imsi-001010000000002",
+    "final_decision": true,
+    "proof_request_ms": 13,
+    "holder_response_ms": 2030,
+    "verification_ms": 3032,
+    "total_ms": 5076,
+    "cache_hit": false
+  },
+  {
+    "experiment": "warm_latency",
+    "run": 1,
+    "supi": "imsi-001010000000002",
+    "final_decision": true,
+    "proof_request_ms": 30,
+    "holder_response_ms": 2188,
+    "verification_ms": 2994,
+    "total_ms": 5213,
+    "cache_hit": true
+  },
+  {
+    "experiment": "warm_latency",
+    "run": 2,
+    "supi": "imsi-001010000000002",
+    "final_decision": true,
+    "proof_request_ms": 30,
+    "holder_response_ms": 2188,
+    "verification_ms": 2994,
+    "total_ms": 5213,
+    "cache_hit": true
+  },
+  {
+    "experiment": "warm_latency",
+    "run": 3,
+    "supi": "imsi-001010000000002",
+    "final_decision": true,
+    "proof_request_ms": 30,
+    "holder_response_ms": 2188,
+    "verification_ms": 2994,
+    "total_ms": 5213,
+    "cache_hit": true
+  },
+  {
+    "experiment": "warm_latency",
+    "run": 4,
+    "supi": "imsi-001010000000002",
+    "final_decision": true,
+    "proof_request_ms": 30,
+    "holder_response_ms": 2188,
+    "verification_ms": 2994,
+    "total_ms": 5213,
+    "cache_hit": true
+  },
+  {
+    "experiment": "warm_latency",
+    "run": 5,
+    "supi": "imsi-001010000000002",
+    "final_decision": true,
+    "proof_request_ms": 30,
+    "holder_response_ms": 2188,
+    "verification_ms": 2994,
+    "total_ms": 5213,
+    "cache_hit": true
+  }
+]

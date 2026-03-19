@@ -1,0 +1,5 @@
+experiment,supi,final_decision,reason,total_ms,proof_verified,policy_allowed,slice
+multi_ue_sequential,imsi-001010000000002,True,all_checks_passed,4708,True,True,SST:1
+multi_ue_sequential,imsi-001010000000003,True,all_checks_passed,2198,True,True,SST:1
+multi_ue_sequential,imsi-001010000000004,True,all_checks_passed,5392,True,True,SST:1
+multi_ue_sequential,imsi-001010000000005,True,all_checks_passed,2801,True,True,SST:1

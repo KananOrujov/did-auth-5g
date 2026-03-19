@@ -1,0 +1,11 @@
+experiment,run,supi,final_decision,proof_request_ms,holder_response_ms,verification_ms,total_ms,cache_hit
+cold_latency,1,imsi-001010000000002,True,17,1899,2338,4254,False
+cold_latency,2,imsi-001010000000002,True,14,1417,3748,5181,False
+cold_latency,3,imsi-001010000000002,True,14,1972,2327,4313,False
+cold_latency,4,imsi-001010000000002,True,16,2035,2389,4441,False
+cold_latency,5,imsi-001010000000002,True,13,2030,3032,5076,False
+warm_latency,1,imsi-001010000000002,True,30,2188,2994,5213,True
+warm_latency,2,imsi-001010000000002,True,30,2188,2994,5213,True
+warm_latency,3,imsi-001010000000002,True,30,2188,2994,5213,True
+warm_latency,4,imsi-001010000000002,True,30,2188,2994,5213,True
+warm_latency,5,imsi-001010000000002,True,30,2188,2994,5213,True
