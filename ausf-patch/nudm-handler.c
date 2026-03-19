@@ -20,47 +20,141 @@
 #include "nudm-handler.h"
 #include <unistd.h>
 #include <curl/curl.h>
+#include <time.h>
+#include <string.h>
 
+/* =========================================================
+ * DID Authentication Configuration
+ * ========================================================= */
+#define DID_AUTH_URL            "http://127.0.0.1:5000/did-auth"
+#define DID_TIMEOUT_MS          15000L   /* 15s total timeout */
+#define DID_CONNECT_TIMEOUT_MS  500L     /* 500ms connect timeout */
+#define DID_CACHE_TTL_SEC       30       /* cache valid for 30s */
+#define DID_CACHE_SIZE          16       /* max cached SUPIs */
+#define DID_FAIL_OPEN           0        /* 0 = fail-close (secure default) */
 
-/* discard curl response body */
-static size_t did_auth_discard(void *ptr, size_t size, size_t nmemb, void *ud)
-{ (void)ptr;(void)ud; return size*nmemb; }
-/* DID Authentication Check - synchronous, fast cache expected */
+/* =========================================================
+ * In-memory SUPI authentication cache
+ * ========================================================= */
+typedef struct {
+    char     supi[64];
+    int      result;      /* 1 = allow, 0 = deny */
+    time_t   expires;
+} did_cache_entry_t;
+
+static did_cache_entry_t did_cache[DID_CACHE_SIZE];
+static int did_cache_initialized = 0;
+
+static void did_cache_init(void) {
+    memset(did_cache, 0, sizeof(did_cache));
+    did_cache_initialized = 1;
+}
+
+static int did_cache_lookup(const char *supi) {
+    if (!did_cache_initialized) did_cache_init();
+    int i;
+    time_t now = time(NULL);
+    for (i = 0; i < DID_CACHE_SIZE; i++) {
+        if (did_cache[i].supi[0] &&
+            strcmp(did_cache[i].supi, supi) == 0 &&
+            did_cache[i].expires > now) {
+            ogs_debug("[DID-AUTH] Cache HIT for SUPI=%s result=%d", 
+                      supi, did_cache[i].result);
+            return did_cache[i].result; /* 0 or 1 */
+        }
+    }
+    return -1; /* cache miss */
+}
+
+static void did_cache_store(const char *supi, int result) {
+    if (!did_cache_initialized) did_cache_init();
+    time_t now = time(NULL);
+    /* Find existing entry or oldest slot */
+    int i, slot = 0;
+    time_t oldest = did_cache[0].expires;
+    for (i = 0; i < DID_CACHE_SIZE; i++) {
+        if (!did_cache[i].supi[0] || 
+            strcmp(did_cache[i].supi, supi) == 0) {
+            slot = i;
+            break;
+        }
+        if (did_cache[i].expires < oldest) {
+            oldest = did_cache[i].expires;
+            slot = i;
+        }
+    }
+    strncpy(did_cache[slot].supi, supi, sizeof(did_cache[slot].supi) - 1);
+    did_cache[slot].supi[sizeof(did_cache[slot].supi) - 1] = '\0';
+    did_cache[slot].result  = result;
+    did_cache[slot].expires = now + DID_CACHE_TTL_SEC;
+    ogs_debug("[DID-AUTH] Cache STORE for SUPI=%s result=%d ttl=%ds",
+              supi, result, DID_CACHE_TTL_SEC);
+}
+
+/* =========================================================
+ * Curl response discard callback
+ * ========================================================= */
+static size_t did_auth_discard(void *ptr, size_t size, 
+                                size_t nmemb, void *ud)
+{ (void)ptr; (void)ud; return size * nmemb; }
+
+/* =========================================================
+ * DID Authentication Check
+ * Fail-close: returns false if sidecar unreachable
+ * Uses in-memory cache to avoid repeated round-trips
+ * ========================================================= */
 static bool did_auth_check(const char *supi)
 {
+    /* 1. Check cache first */
+    int cached = did_cache_lookup(supi);
+    if (cached >= 0) {
+        return (cached == 1);
+    }
+
+    /* 2. Call sidecar */
     CURL *curl;
     CURLcode res;
     long http_code = 0;
     char post_body[256];
-    bool verified = true; /* default: fail open */
+    bool verified = (DID_FAIL_OPEN == 1); /* fail-close by default */
 
     snprintf(post_body, sizeof(post_body),
              "{\"supi\": \"%s\"}", supi);
 
-    curl_global_init(CURL_GLOBAL_DEFAULT);
     curl = curl_easy_init();
-    if (!curl) return true;
+    if (!curl) {
+        ogs_error("[DID-AUTH] curl_easy_init() failed - failing %s",
+                  DID_FAIL_OPEN ? "open" : "closed");
+        return DID_FAIL_OPEN;
+    }
 
     struct curl_slist *headers = NULL;
     headers = curl_slist_append(headers, "Content-Type: application/json");
 
-    curl_easy_setopt(curl, CURLOPT_URL, "http://127.0.0.1:5000/did-auth");
+    curl_easy_setopt(curl, CURLOPT_URL, DID_AUTH_URL);
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, post_body);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, 6000L);
-    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, 500L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, DID_TIMEOUT_MS);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, DID_CONNECT_TIMEOUT_MS);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, did_auth_discard);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, NULL);
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
 
     res = curl_easy_perform(curl);
+
     if (res == CURLE_OK) {
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
         verified = (http_code == 200);
         ogs_info("[DID-AUTH] SUPI=%s HTTP=%ld verified=%s",
                  supi, http_code, verified ? "true" : "false");
+        /* Cache the result */
+        did_cache_store(supi, verified ? 1 : 0);
     } else {
-        ogs_warn("[DID-AUTH] curl error=%s failing open", curl_easy_strerror(res));
+        ogs_error("[DID-AUTH] curl error=%s - failing %s",
+                  curl_easy_strerror(res),
+                  DID_FAIL_OPEN ? "open" : "closed");
+        /* Do NOT cache errors - retry next time */
+        verified = DID_FAIL_OPEN;
     }
 
     curl_slist_free_all(headers);
@@ -103,121 +197,66 @@ bool ausf_nudm_ueau_handle_get(ausf_ue_t *ausf_ue,
     ogs_assert(stream);
     server = ogs_sbi_server_from_stream(stream);
     ogs_assert(server);
-
     ogs_assert(recvmsg);
 
     AuthenticationInfoResult = recvmsg->AuthenticationInfoResult;
     if (!AuthenticationInfoResult) {
         ogs_error("[%s] No AuthenticationInfoResult", ausf_ue->suci);
-        ogs_assert(true ==
-            ogs_sbi_server_send_error(stream,
-                OGS_SBI_HTTP_STATUS_BAD_REQUEST,
-                recvmsg, "No AuthenticationInfoResult", ausf_ue->suci,
-                NULL));
+        ogs_sbi_server_send_error(stream,
+            OGS_SBI_HTTP_STATUS_BAD_REQUEST,
+            recvmsg, "No AuthenticationInfoResult", ausf_ue->suci, NULL);
         return false;
     }
 
-    /* See TS29.509 6.1.7.3 Application Errors */
-    if (AuthenticationInfoResult->auth_type !=
-            OpenAPI_auth_type_5G_AKA) {
+    if (AuthenticationInfoResult->auth_type != OpenAPI_auth_type_5G_AKA) {
         ogs_error("[%s] Not supported Auth Method [%d]",
             ausf_ue->suci, AuthenticationInfoResult->auth_type);
-        ogs_assert(true ==
-            ogs_sbi_server_send_error(stream,
-                OGS_SBI_HTTP_STATUS_NOT_IMPLEMENTED,
-                recvmsg, "Not supported Auth Method", ausf_ue->suci,
-                NULL));
+        ogs_sbi_server_send_error(stream,
+            OGS_SBI_HTTP_STATUS_NOT_IMPLEMENTED,
+            recvmsg, "Not supported Auth Method", ausf_ue->suci, NULL);
         return false;
     }
 
-    AuthenticationVector =
-        AuthenticationInfoResult->authentication_vector;
+    AuthenticationVector = AuthenticationInfoResult->authentication_vector;
     if (!AuthenticationVector) {
         ogs_error("[%s] No AuthenticationVector", ausf_ue->suci);
-        ogs_assert(true ==
-            ogs_sbi_server_send_error(stream,
-                OGS_SBI_HTTP_STATUS_BAD_REQUEST,
-                recvmsg, "No AuthenticationVector", ausf_ue->suci, NULL));
+        ogs_sbi_server_send_error(stream,
+            OGS_SBI_HTTP_STATUS_BAD_REQUEST,
+            recvmsg, "No AuthenticationVector", ausf_ue->suci, NULL);
         return false;
     }
 
     if (AuthenticationVector->av_type != OpenAPI_av_type_5G_HE_AKA) {
         ogs_error("[%s] Not supported Auth Method [%d]",
             ausf_ue->suci, AuthenticationVector->av_type);
-        /*
-         * TS29.509
-         * 5.2.2.2.2 5G AKA 
-         *
-         * On failure or redirection, one of the HTTP status code
-         * listed in table 6.1.7.3-1 shall be returned with the message
-         * body containing a ProblemDetails structure with the "cause"
-         * attribute set to one of the application error listed in
-         * Table 6.1.7.3-1.
-         * Application Error: AUTHENTICATION_REJECTED
-         * HTTP status code: 403 Forbidden 
-         * Description: The user cannot be authenticated with this
-         * authentication method e.g. only SIM data available 
-         */
-        ogs_assert(true ==
-            ogs_sbi_server_send_error(stream,
-                OGS_SBI_HTTP_STATUS_FORBIDDEN,
-                recvmsg, "Not supported Auth Method", ausf_ue->suci,
-                "AUTHENTICATION_REJECTED"));
+        ogs_sbi_server_send_error(stream,
+            OGS_SBI_HTTP_STATUS_FORBIDDEN,
+            recvmsg, "Not supported Auth Method", ausf_ue->suci,
+            "AUTHENTICATION_REJECTED");
         return false;
     }
 
-    if (!AuthenticationVector->rand) {
-        ogs_error("[%s] No AuthenticationVector.rand", ausf_ue->suci);
-        ogs_assert(true ==
-            ogs_sbi_server_send_error(stream,
-                OGS_SBI_HTTP_STATUS_BAD_REQUEST,
-                recvmsg, "No AuthenticationVector.rand", ausf_ue->suci,
-                NULL));
-        return false;
-    }
-
-    if (!AuthenticationVector->xres_star) {
-        ogs_error("[%s] No AuthenticationVector.xresStar",
-                ausf_ue->suci);
-        ogs_assert(true ==
-            ogs_sbi_server_send_error(stream,
-                OGS_SBI_HTTP_STATUS_BAD_REQUEST,
-                recvmsg, "No AuthenticationVector.xresStar", ausf_ue->suci,
-                NULL));
-        return false;
-    }
-
-    if (!AuthenticationVector->autn) {
-        ogs_error("[%s] No AuthenticationVector.autn", ausf_ue->suci);
-        ogs_assert(true ==
-            ogs_sbi_server_send_error(stream,
-                OGS_SBI_HTTP_STATUS_BAD_REQUEST,
-                recvmsg, "No AuthenticationVector.autn", ausf_ue->suci,
-                NULL));
-        return false;
-    }
-
-    if (!AuthenticationVector->kausf) {
-        ogs_error("[%s] No AuthenticationVector.kausf", ausf_ue->suci);
-        ogs_assert(true ==
-            ogs_sbi_server_send_error(stream,
-                OGS_SBI_HTTP_STATUS_BAD_REQUEST,
-                recvmsg, "No AuthenticationVector.kausf", ausf_ue->suci,
-                NULL));
+    if (!AuthenticationVector->rand ||
+        !AuthenticationVector->xres_star ||
+        !AuthenticationVector->autn ||
+        !AuthenticationVector->kausf) {
+        ogs_error("[%s] Missing AuthenticationVector fields", ausf_ue->suci);
+        ogs_sbi_server_send_error(stream,
+            OGS_SBI_HTTP_STATUS_BAD_REQUEST,
+            recvmsg, "Missing AuthenticationVector fields",
+            ausf_ue->suci, NULL);
         return false;
     }
 
     if (!AuthenticationInfoResult->supi) {
-        ogs_error("[%s] No AuthenticationVector.supi", ausf_ue->suci);
-        ogs_assert(true ==
-            ogs_sbi_server_send_error(stream,
-                OGS_SBI_HTTP_STATUS_BAD_REQUEST,
-                recvmsg, "No AuthenticationVector.supi", ausf_ue->suci,
-                NULL));
+        ogs_error("[%s] No SUPI in AuthenticationInfoResult", ausf_ue->suci);
+        ogs_sbi_server_send_error(stream,
+            OGS_SBI_HTTP_STATUS_BAD_REQUEST,
+            recvmsg, "No SUPI", ausf_ue->suci, NULL);
         return false;
     }
 
-    /* SUPI */
+    /* Store SUPI */
     if (ausf_ue->supi) {
         ogs_hash_set(ausf_self()->supi_hash,
                 ausf_ue->supi, strlen(ausf_ue->supi), NULL);
@@ -226,17 +265,18 @@ bool ausf_nudm_ueau_handle_get(ausf_ue_t *ausf_ue,
     ausf_ue->supi = ogs_strdup(AuthenticationInfoResult->supi);
     ogs_assert(ausf_ue->supi);
 
-    /* DID Authentication - verify UE has valid Verifiable Credential */
+    /* DID Authentication - fail-close, cached */
     ogs_info("[DID-AUTH] Calling did_auth_check for SUPI=%s", ausf_ue->supi);
     if (!did_auth_check(ausf_ue->supi)) {
-        ogs_error("[DID-AUTH] DID verification FAILED for SUPI=%s - rejecting", ausf_ue->supi);
-        ogs_assert(true == ogs_sbi_server_send_error(
-                stream, OGS_SBI_HTTP_STATUS_FORBIDDEN,
-                recvmsg, "DID Authentication Failed", ausf_ue->supi,
-                NULL));
+        ogs_error("[DID-AUTH] DID verification FAILED for SUPI=%s - rejecting",
+                  ausf_ue->supi);
+        ogs_sbi_server_send_error(stream,
+            OGS_SBI_HTTP_STATUS_FORBIDDEN,
+            recvmsg, "DID Authentication Failed", ausf_ue->supi, NULL);
         return false;
     }
     ogs_info("[DID-AUTH] DID verification PASSED for SUPI=%s", ausf_ue->supi);
+
     ogs_hash_set(ausf_self()->supi_hash,
             ausf_ue->supi, strlen(ausf_ue->supi), ausf_ue);
 
@@ -256,7 +296,6 @@ bool ausf_nudm_ueau_handle_get(ausf_ue_t *ausf_ue,
         ausf_ue->kausf, sizeof(ausf_ue->kausf));
 
     memset(&UeAuthenticationCtx, 0, sizeof(UeAuthenticationCtx));
-
     UeAuthenticationCtx.auth_type = ausf_ue->auth_type;
 
     memset(&AV5G_AKA, 0, sizeof(AV5G_AKA));
@@ -272,7 +311,6 @@ bool ausf_nudm_ueau_handle_get(ausf_ue_t *ausf_ue,
     UeAuthenticationCtx._5g_auth_data = &AV5G_AKA;
 
     memset(&LinksValueSchemeValue, 0, sizeof(LinksValueSchemeValue));
-
     memset(&header, 0, sizeof(header));
     header.service.name = (char *)OGS_SBI_SERVICE_NAME_NAUSF_AUTH;
     header.api.version = (char *)OGS_SBI_API_V1;
@@ -292,7 +330,6 @@ bool ausf_nudm_ueau_handle_get(ausf_ue_t *ausf_ue,
     OpenAPI_list_add(UeAuthenticationCtx._links, LinksValueScheme);
 
     memset(&sendmsg, 0, sizeof(sendmsg));
-
     memset(&header, 0, sizeof(header));
     header.service.name = (char *)OGS_SBI_SERVICE_NAME_NAUSF_AUTH;
     header.api.version = (char *)OGS_SBI_API_V1;
@@ -302,7 +339,6 @@ bool ausf_nudm_ueau_handle_get(ausf_ue_t *ausf_ue,
 
     sendmsg.http.location = ogs_sbi_server_uri(server, &header);
     sendmsg.http.content_type = (char *)OGS_SBI_CONTENT_3GPPHAL_TYPE;
-
     sendmsg.UeAuthenticationCtx = &UeAuthenticationCtx;
 
     response = ogs_sbi_build_response(&sendmsg, OGS_SBI_HTTP_STATUS_CREATED);
@@ -311,7 +347,6 @@ bool ausf_nudm_ueau_handle_get(ausf_ue_t *ausf_ue,
 
     OpenAPI_list_free(UeAuthenticationCtx._links);
     OpenAPI_map_free(LinksValueScheme);
-
     ogs_free(LinksValueSchemeValue.href);
     ogs_free(sendmsg.http.location);
 
@@ -328,7 +363,8 @@ bool ausf_nudm_ueau_handle_auth_removal_ind(ausf_ue_t *ausf_ue,
     ogs_assert(stream);
 
     memset(&sendmsg, 0, sizeof(sendmsg));
-    response = ogs_sbi_build_response(&sendmsg, OGS_SBI_HTTP_STATUS_NO_CONTENT);
+    response = ogs_sbi_build_response(
+                &sendmsg, OGS_SBI_HTTP_STATUS_NO_CONTENT);
     ogs_assert(response);
     ogs_assert(true == ogs_sbi_server_send_response(stream, response));
 
@@ -355,36 +391,34 @@ bool ausf_nudm_ueau_handle_result_confirmation_inform(ausf_ue_t *ausf_ue,
 
     ogs_assert(ausf_ue);
     ogs_assert(stream);
-
     ogs_assert(recvmsg);
 
     AuthEvent = recvmsg->AuthEvent;
     if (!AuthEvent) {
         ogs_error("[%s] No AuthEvent", ausf_ue->suci);
-        ogs_assert(true ==
-            ogs_sbi_server_send_error(stream, OGS_SBI_HTTP_STATUS_BAD_REQUEST,
-                    recvmsg, "No AuthEvent", ausf_ue->suci, NULL));
+        ogs_sbi_server_send_error(stream,
+            OGS_SBI_HTTP_STATUS_BAD_REQUEST,
+            recvmsg, "No AuthEvent", ausf_ue->suci, NULL);
         return false;
     }
 
     if (!recvmsg->http.location) {
         ogs_error("[%s] No Location", ausf_ue->suci);
-        ogs_assert(true ==
-            ogs_sbi_server_send_error(stream, OGS_SBI_HTTP_STATUS_BAD_REQUEST,
-                    recvmsg, "No Location", ausf_ue->suci, NULL));
+        ogs_sbi_server_send_error(stream,
+            OGS_SBI_HTTP_STATUS_BAD_REQUEST,
+            recvmsg, "No Location", ausf_ue->suci, NULL);
         return false;
     }
 
     rc = ogs_sbi_getaddr_from_uri(
-            &scheme, &fqdn, &fqdn_port, &addr, &addr6, recvmsg->http.location);
+            &scheme, &fqdn, &fqdn_port, &addr, &addr6,
+            recvmsg->http.location);
     if (rc == false || scheme == OpenAPI_uri_scheme_NULL) {
         ogs_error("[%s] Invalid URI [%s]",
                 ausf_ue->suci, recvmsg->http.location);
-
-        ogs_assert(true ==
-            ogs_sbi_server_send_error(stream, OGS_SBI_HTTP_STATUS_BAD_REQUEST,
-                    recvmsg, "Invalid URI", ausf_ue->suci, NULL));
-
+        ogs_sbi_server_send_error(stream,
+            OGS_SBI_HTTP_STATUS_BAD_REQUEST,
+            recvmsg, "Invalid URI", ausf_ue->suci, NULL);
         return false;
     }
 
@@ -420,7 +454,6 @@ bool ausf_nudm_ueau_handle_result_confirmation_inform(ausf_ue_t *ausf_ue,
     ConfirmationDataResponse.kseaf = kseaf_string;
 
     memset(&sendmsg, 0, sizeof(sendmsg));
-
     sendmsg.ConfirmationDataResponse = &ConfirmationDataResponse;
 
     response = ogs_sbi_build_response(&sendmsg, OGS_SBI_HTTP_STATUS_OK);
