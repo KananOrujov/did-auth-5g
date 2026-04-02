@@ -140,7 +140,7 @@ _global_proof_semaphore = None
 def get_semaphore():
     global _global_proof_semaphore
     if _global_proof_semaphore is None:
-        _global_proof_semaphore = asyncio.Semaphore(1)
+        _global_proof_semaphore = asyncio.Semaphore(3)  # Allow 3 concurrent proof requests
     return _global_proof_semaphore
 
 def update_enforcement_files(supi, final_decision):
@@ -160,6 +160,53 @@ def update_enforcement_files(supi, final_decision):
         log.error(f"[ENFORCE] Failed to update enforcement files: {e}")
 
 did_cache = {}
+
+# ── Revocation cache ──────────────────────────────────────
+# Stores known-revoked credential IDs to skip proof entirely
+# Format: {cred_rev_id: {"revoked": bool, "checked_at": timestamp}}
+revocation_cache = {}
+REVOCATION_CACHE_TTL = 60  # re-check revocation every 60 seconds
+
+async def check_revocation_precheck(session, cred_rev_id, rev_reg_id=None):
+    """
+    Pre-check revocation BEFORE doing full proof.
+    Returns True if credential is known-revoked (should skip proof).
+    Returns False if not revoked or unknown (proceed with proof).
+    """
+    if not cred_rev_id:
+        return False  # no rev_id — cannot pre-check, proceed with proof
+
+    # Check local revocation cache first
+    cached_rev = revocation_cache.get(cred_rev_id)
+    if cached_rev:
+        age = time.time() - cached_rev["checked_at"]
+        if age < REVOCATION_CACHE_TTL:
+            if cached_rev["revoked"]:
+                log.info(f"[REVOC-CACHE] HIT — cred_rev_id={cred_rev_id} is REVOKED (cached)")
+            return cached_rev["revoked"]
+
+    # Query issuer directly with rev_reg_id + cred_rev_id (both known)
+    try:
+        async with session.get(
+            f"http://localhost:8021/revocation/credential-record"
+            f"?rev_reg_id={rev_reg_id}&cred_rev_id={cred_rev_id}"
+        ) as r:
+            if r.status == 200:
+                data = await r.json()
+                state = data.get("result", {}).get("state", "")
+                is_revoked = (state == "revoked")
+                revocation_cache[str(cred_rev_id)] = {
+                    "revoked":    is_revoked,
+                    "checked_at": time.time(),
+                }
+                log.info(f"[REVOC-CACHE] cred_rev_id={cred_rev_id} state={state} revoked={is_revoked}")
+                return is_revoked
+            else:
+                log.debug(f"[REVOC-CACHE] API returned {r.status}")
+    except Exception as e:
+        log.debug(f"[REVOC-CACHE] Pre-check failed (non-fatal): {e}")
+
+    return False  # on error, proceed with full proof (fail-open for pre-check only)
 
 def structured_log(supi, decision, reason, proof_verified, revocation_ok,
                    policy_allowed, slice_value, cache_hit, timings):
@@ -191,8 +238,28 @@ async def _run_did_verification_inner(supi):
     t_total_start = time.time()
     timings = {}
 
-    cred_ref       = SUPI_CRED_MAP.get(supi)
     # Policy loaded per-request via get_policy(supi)
+    # Always query wallet for cred_ref, cred_rev_id, rev_reg_id
+    cred_ref    = SUPI_CRED_MAP.get(supi)  # fast hint
+    cred_rev_id = None
+    rev_reg_id  = None
+    try:
+        async with ClientSession(timeout=ClientTimeout(total=5)) as s:
+            async with s.get(f"{HOLDER_URL}/credentials") as r:
+                creds = (await r.json()).get("results", [])
+                for c in creds:
+                    if c.get("attrs", {}).get("supi") == supi:
+                        cred_ref    = c["referent"]
+                        cred_rev_id = c.get("cred_rev_id")
+                        rev_reg_id  = c.get("rev_reg_id")
+                        log.info(f"[LOOKUP] {supi} -> cred={cred_ref[:8]}... rev_id={cred_rev_id}")
+                        break
+        if not cred_ref:
+            log.warning(f"[LOOKUP] {supi} not in wallet, using static map")
+            cred_ref = SUPI_CRED_MAP.get(supi)
+    except Exception as e:
+        log.error(f"[LOOKUP] Wallet query failed: {e}, using static map")
+        cred_ref = SUPI_CRED_MAP.get(supi)
 
     proof_verified    = False
     revocation_ok     = False
@@ -208,6 +275,24 @@ async def _run_did_verification_inner(supi):
         _store_cache(supi, False, proof_verified, revocation_ok, policy_allowed,
                      slice_value, reason, timings, t_total_start)
         return
+
+    # ── Revocation pre-check ─────────────────────────────
+    # Check if credential is known-revoked BEFORE doing full proof
+    # This saves 2-4 seconds of unnecessary DIDComm exchange
+    if cred_rev_id and rev_reg_id:
+        try:
+            async with ClientSession(timeout=ClientTimeout(total=5)) as pre_session:
+                is_revoked = await check_revocation_precheck(pre_session, cred_rev_id, rev_reg_id)
+                if is_revoked:
+                    log.info(f"[REVOC-PRECHECK] {supi} cred_rev_id={cred_rev_id} REVOKED — skipping proof")
+                    reason = "credential_revoked_precheck"
+                    timings["precheck_ms"] = int((time.time() - t_total_start) * 1000)
+                    timings["total_ms"]    = timings["precheck_ms"]
+                    _store_cache(supi, False, False, False, False,
+                                 None, reason, timings, t_total_start)
+                    return
+        except Exception as e:
+            log.debug(f"[REVOC-PRECHECK] Failed (non-fatal, proceeding): {e}")
 
     timeout = ClientTimeout(total=30)
     try:
@@ -344,6 +429,8 @@ async def _run_did_verification_inner(supi):
         log.error(f"[ERROR] {supi}: {reason}")
         timings["total_ms"] = int((time.time() - t_total_start) * 1000)
         _store_cache(supi, FAIL_OPEN, False, False, False, None, reason, timings, t_total_start)
+        # Structured error info stored in cache reason field
+        # error_type and retryable conveyed via reason string
 
 def _store_cache(supi, final_decision, proof_verified, revocation_ok,
                  policy_allowed, slice_value, reason, timings, t_start):
@@ -431,15 +518,18 @@ async def handle_did_auth(request):
 
 async def handle_health(request):
     return web.json_response({
-        "status":       "ok",
-        "version":      "4.0",
-        "ledger":       LEDGER_MODE,
-        "fail_mode":    "open" if FAIL_OPEN else "close",
-        "cache":        "on" if CACHE_ENABLED else "off",
-        "cache_ttl_s":  CACHE_TTL,
-        "verifier_url": VERIFIER_URL,
-        "cred_def_id":  CRED_DEF_ID,
-        "cached_supis": list(did_cache.keys())
+        "status":             "ok",
+        "version":            "4.2",
+        "ledger":             LEDGER_MODE,
+        "fail_mode":          "open" if FAIL_OPEN else "close",
+        "cache":              "on" if CACHE_ENABLED else "off",
+        "cache_ttl_s":        CACHE_TTL,
+        "verifier_url":       VERIFIER_URL,
+        "cred_def_id":        CRED_DEF_ID,
+        "cached_supis":       list(did_cache.keys()),
+        "revocation_cache":   {k: v["revoked"] for k,v in revocation_cache.items()},
+        "active_requests":    _active_requests,
+        "max_queue":          MAX_QUEUE,
     })
 
 async def handle_cache_view(request):
@@ -449,14 +539,35 @@ async def handle_cache_clear(request):
     did_cache.clear()
     return web.json_response({"status": "cache cleared"})
 
+# ── Load protection ───────────────────────────────────────
+MAX_QUEUE = 20  # max concurrent requests before rejecting
+_active_requests = 0
+
+async def handle_did_auth_protected(request):
+    global _active_requests
+    if _active_requests >= MAX_QUEUE:
+        log.warning(f"[OVERLOAD] Queue full ({_active_requests}/{MAX_QUEUE}) — rejecting request")
+        return web.json_response({
+            "final_decision": False,
+            "reason":         "system_overloaded",
+            "error_type":     "overload",
+            "retryable":      True,
+            "queue_size":     _active_requests,
+        }, status=503)
+    _active_requests += 1
+    try:
+        return await handle_did_auth(request)
+    finally:
+        _active_requests -= 1
+
 app = web.Application()
-app.router.add_post("/did-auth",     handle_did_auth)
+app.router.add_post("/did-auth",     handle_did_auth_protected)
 app.router.add_get("/health",        handle_health)
 app.router.add_get("/cache",         handle_cache_view)
 app.router.add_post("/cache/clear",  handle_cache_clear)
 
 if __name__ == "__main__":
-    log.info(f"Starting DID Auth Sidecar v4.0 on port {ARGS.port}")
+    log.info(f"Starting DID Auth Sidecar v4.2 on port {ARGS.port}")
     log.info(f"Ledger:    {LEDGER_MODE}")
     log.info(f"Fail mode: {'open' if FAIL_OPEN else 'close'}")
     log.info(f"Cache:     {'on' if CACHE_ENABLED else 'off'} (TTL={CACHE_TTL}s)")
