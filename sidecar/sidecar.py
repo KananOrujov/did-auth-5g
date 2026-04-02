@@ -88,14 +88,49 @@ CRED_DEF_ID   = _cfg["cred_def_id"]
 VERIFIER_CONN = _cfg["verifier_conn"]
 SUPI_CRED_MAP = _cfg["supi_cred_map"]
 
-SLICE_POLICY = {
-    "imsi-001010000000001": "SST:1",
-    "imsi-001010000000002": "SST:1",
-    "imsi-001010000000003": "SST:1",
-    "imsi-001010000000004": "SST:1",
-    "imsi-001010000000005": "SST:1",
-    "imsi-001010000000006": "SST:1",  # requires SST:1 but cred has SST:2 -> DENY
+# ── Extended Policy Rules ─────────────────────────────────
+# Per-SUPI policy: required_slice, required_type, trusted_issuers
+# Any attribute mismatch → policy_allowed=False with specific reason
+POLICY_RULES = {
+    "imsi-001010000000001": {
+        "required_slice":   "SST:1",
+        "required_type":    "5G-SA",
+        "trusted_issuers":  ["MNO-Open5GS", "MNO-Local"],
+    },
+    "imsi-001010000000002": {
+        "required_slice":   "SST:1",
+        "required_type":    "5G-SA",
+        "trusted_issuers":  ["MNO-Open5GS", "MNO-Local"],
+    },
+    "imsi-001010000000003": {
+        "required_slice":   "SST:1",
+        "required_type":    "5G-SA",
+        "trusted_issuers":  ["MNO-Open5GS", "MNO-Local"],
+    },
+    "imsi-001010000000004": {
+        "required_slice":   "SST:1",
+        "required_type":    "5G-SA",
+        "trusted_issuers":  ["MNO-Open5GS", "MNO-Local"],
+    },
+    "imsi-001010000000005": {
+        "required_slice":   "SST:1",
+        "required_type":    "5G-SA",
+        "trusted_issuers":  ["MNO-Open5GS", "MNO-Local"],
+    },
+    "imsi-001010000000006": {
+        "required_slice":   "SST:1",   # has SST:2 cred -> DENY
+        "required_type":    "5G-SA",
+        "trusted_issuers":  ["MNO-Open5GS", "MNO-Local"],
+    },
 }
+
+# Backward-compatible helper
+def get_policy(supi):
+    return POLICY_RULES.get(supi, {
+        "required_slice":  "SST:1",
+        "required_type":   "5G-SA",
+        "trusted_issuers": ["MNO-Open5GS", "MNO-Local"],
+    })
 
 BLOCKED_SUPIS_FILE = "/var/tmp/blocked_ues.txt"
 UE_IP_MAP_FILE     = "/var/tmp/ue_ip_map.txt"
@@ -157,13 +192,16 @@ async def _run_did_verification_inner(supi):
     timings = {}
 
     cred_ref       = SUPI_CRED_MAP.get(supi)
-    required_slice = SLICE_POLICY.get(supi, "SST:1")
+    # Policy loaded per-request via get_policy(supi)
 
-    proof_verified = False
-    revocation_ok  = False
-    policy_allowed = False
-    slice_value    = None
-    reason         = "unknown_error"
+    proof_verified    = False
+    revocation_ok     = False
+    policy_allowed    = False
+    slice_value       = None
+    type_value        = None
+    issuer_value      = None
+    policy_deny_reason = None
+    reason            = "unknown_error"
 
     if not cred_ref:
         reason = "no_credential_mapped"
@@ -257,11 +295,31 @@ async def _run_did_verification_inner(supi):
                             proof_verified = vd.get("verified") == True or vd.get("verified") == "true"
                             revocation_ok  = proof_verified
                             try:
-                                revealed    = vd["presentation"]["requested_proof"]["revealed_attrs"]
-                                slice_value = revealed["slice_attr"]["raw"]
+                                revealed     = vd["presentation"]["requested_proof"]["revealed_attrs"]
+                                slice_value  = revealed["slice_attr"]["raw"]
+                                type_value   = revealed.get("type_attr",  {}).get("raw")
+                                issuer_value = revealed.get("issuer_attr",{}).get("raw")
                             except Exception:
-                                slice_value = None
-                            policy_allowed = (slice_value == required_slice)
+                                slice_value  = None
+                                type_value   = None
+                                issuer_value = None
+
+                            # Extended policy: slice + type + issuer trust
+                            pol        = get_policy(supi)
+                            slice_ok   = (slice_value  == pol["required_slice"])
+                            type_ok    = (type_value   is None or type_value  == pol["required_type"])
+                            issuer_ok  = (issuer_value is None or issuer_value in pol["trusted_issuers"])
+                            policy_allowed = slice_ok and type_ok and issuer_ok
+
+                            # Store which check failed for reason field
+                            if not slice_ok:
+                                policy_deny_reason = f"slice_policy_denied: got={slice_value} required={pol['required_slice']}"
+                            elif not type_ok:
+                                policy_deny_reason = f"type_policy_denied: got={type_value} required={pol['required_type']}"
+                            elif not issuer_ok:
+                                policy_deny_reason = f"issuer_not_trusted: issuer={issuer_value} not in {pol['trusted_issuers']}"
+                            else:
+                                policy_deny_reason = None
                         break
                 await asyncio.sleep(1)
             timings["verification_ms"] = int((time.time() - t0) * 1000)
@@ -272,7 +330,7 @@ async def _run_did_verification_inner(supi):
             elif not revocation_ok:
                 reason = "credential_revoked"
             elif not policy_allowed:
-                reason = f"slice_policy_denied: got={slice_value} required={required_slice}"
+                reason = policy_deny_reason or "policy_denied"
             else:
                 reason = "all_checks_passed"
 
