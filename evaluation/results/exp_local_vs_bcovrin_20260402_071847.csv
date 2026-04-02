@@ -1,0 +1,11 @@
+ledger,run,total_ms,proof_request_ms,holder_response_ms,verification_ms
+local,1,3069,472,1401,1194
+local,2,2919,26,1702,1189
+local,3,2421,27,1239,1154
+local,4,2455,43,1225,1185
+local,5,2424,18,1221,1184
+bcovrin,1,4708,,,
+bcovrin,2,4396,,,
+bcovrin,3,4513,,,
+bcovrin,4,5181,,,
+bcovrin,5,4653,,,

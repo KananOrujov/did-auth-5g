@@ -1,0 +1,75 @@
+{
+  "experiment": "local_vs_bcovrin_latency",
+  "timestamp": "20260402_071847",
+  "local_ledger": {
+    "min_ms": 2421,
+    "max_ms": 3069,
+    "avg_ms": 2658,
+    "raw": [
+      {
+        "run": 1,
+        "total_ms": 3069,
+        "proof_request_ms": 472,
+        "holder_response_ms": 1401,
+        "verification_ms": 1194
+      },
+      {
+        "run": 2,
+        "total_ms": 2919,
+        "proof_request_ms": 26,
+        "holder_response_ms": 1702,
+        "verification_ms": 1189
+      },
+      {
+        "run": 3,
+        "total_ms": 2421,
+        "proof_request_ms": 27,
+        "holder_response_ms": 1239,
+        "verification_ms": 1154
+      },
+      {
+        "run": 4,
+        "total_ms": 2455,
+        "proof_request_ms": 43,
+        "holder_response_ms": 1225,
+        "verification_ms": 1185
+      },
+      {
+        "run": 5,
+        "total_ms": 2424,
+        "proof_request_ms": 18,
+        "holder_response_ms": 1221,
+        "verification_ms": 1184
+      }
+    ]
+  },
+  "bcovrin": {
+    "min_ms": 4396,
+    "max_ms": 5181,
+    "avg_ms": 4690,
+    "raw": [
+      {
+        "run": 1,
+        "total_ms": 4708
+      },
+      {
+        "run": 2,
+        "total_ms": 4396
+      },
+      {
+        "run": 3,
+        "total_ms": 4513
+      },
+      {
+        "run": 4,
+        "total_ms": 5181
+      },
+      {
+        "run": 5,
+        "total_ms": 4653
+      }
+    ]
+  },
+  "ledger_rtt_overhead_ms": 2033,
+  "speedup_factor": 1.8
+}

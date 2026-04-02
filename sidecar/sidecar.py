@@ -17,8 +17,8 @@ log = logging.getLogger(__name__)
 
 VERIFIER_URL  = "http://localhost:8041"
 HOLDER_URL    = "http://localhost:8031"
-CRED_DEF_ID   = "QTbY98psM6bDviJj9A6JLU:3:CL:3132200:revocable"
-VERIFIER_CONN = "4a229530-2c7c-4202-a762-f3c84bcfa45e"
+CRED_DEF_ID   = "YbmLV9CGCk8Uq1NAJqvD77:3:CL:9:revocable2"
+VERIFIER_CONN = "e546aae9-6ad5-4f32-b129-53cb28b5ec68"
 CACHE_TTL     = 300
 FAIL_OPEN     = False  # Stage 1: fail-close by default
 
@@ -40,12 +40,12 @@ SLICE_POLICY = {
 }
 
 SUPI_CRED_MAP = {
-    "imsi-001010000000001": "ce8e519e-2022-482a-919f-02646493f73c",
-    "imsi-001010000000002": "40dd6224-bb79-4350-8953-8e257d63db31",
-    "imsi-001010000000003": "30a67241-eba2-47d9-838e-8252b351a66d",
-    "imsi-001010000000004": "1ab7dcfc-4eb6-4318-a8b7-311b3bc47723",
-    "imsi-001010000000005": "ee84735e-5282-4f46-9353-64aac032072f",
-    "imsi-001010000000006": "95d3fb40-e671-4347-a2d4-973d2a89fef4",
+    "imsi-001010000000001": "9c69c256-d701-484c-a588-77ec36ef42bc",  # rev_id=2
+    "imsi-001010000000002": "7d7bcb6e-b700-4c9a-9887-8239545afb96",  # rev_id=4
+    "imsi-001010000000003": "9845b976-450f-4317-963c-6284ab5ba796",  # rev_id=6
+    "imsi-001010000000004": "bda892cd-f365-46f1-9652-aeb6c71ed721",  # rev_id=3
+    "imsi-001010000000005": "5fcbd8a0-6c04-405b-852f-5330fa964eb9",  # rev_id=1
+    "imsi-001010000000006": "dad066ed-2e2a-4ffa-8467-d62eefdd41c3",  # rev_id=5 SST:2
 }
 
 
