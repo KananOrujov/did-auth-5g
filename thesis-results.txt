@@ -156,3 +156,26 @@ Simulated edge (50ms RTT delay):  9116ms, 4790ms, 4558ms  avg=6155ms
 Edge overhead: ~+1000ms (~20 HTTP round trips x 50ms)
 Note: Full distributed deployment (separate host) expected to add
       proportional latency based on network RTT to verifier
+
+=== Stage 3: Local Ledger vs BCovrin Comparison - 2026-04-02 ===
+Setup: von-network local Indy ledger (4 validator nodes, localhost)
+Local DID: YbmLV9CGCk8Uq1NAJqvD77
+Cred Def: YbmLV9CGCk8Uq1NAJqvD77:3:CL:9:revocable2
+
+LOCAL LEDGER Cold Latency (n=5):
+Run 1: total=3069ms proof=472ms holder=1401ms verify=1194ms
+Run 2: total=2919ms proof=26ms  holder=1702ms verify=1189ms
+Run 3: total=2421ms proof=27ms  holder=1239ms verify=1154ms
+Run 4: total=2455ms proof=43ms  holder=1225ms verify=1185ms
+Run 5: total=2424ms proof=18ms  holder=1221ms verify=1184ms
+Local avg: 2658ms | min: 2421ms | max: 3069ms
+
+BCovrin Cold Latency (n=5, from Stage 2):
+avg: 4690ms | min: 4396ms | max: 5181ms
+
+Ledger RTT overhead: +2033ms (BCovrin vs Local)
+Speedup: 1.8x faster with local ledger
+
+Key finding: 2033ms of BCovrin latency = network distance to Canada
+DIDComm protocol overhead itself = ~2658ms
+In regional B5G deployment (local/edge ledger): < 3 seconds total

@@ -12,4 +12,4 @@ python3 -m aries_cloudagent start \
   --wallet-key holder-key-01 \
   --auto-provision \
   --log-level info \
-  2>&1 | tee /home/kali/did-auth/logs/holder.log
+  2>&1 | tee /home/kali/did-auth-5g/logs/holder.log

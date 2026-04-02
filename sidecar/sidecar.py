@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-DID Authentication Sidecar v3.0
+DID Authentication Sidecar v3.1
 - Separated decision logic (proof_verified, revocation_ok, policy_allowed)
 - Fail-close by default
 - Structured JSON logging
@@ -36,7 +36,7 @@ SLICE_POLICY = {
     "imsi-001010000000003": "SST:1",
     "imsi-001010000000004": "SST:1",
     "imsi-001010000000005": "SST:1",
-    "imsi-001010000000006": "SST:1",
+    "imsi-001010000000006": "SST:1",  # requires SST:1 but cred has SST:2 -> DENY
 }
 
 SUPI_CRED_MAP = {

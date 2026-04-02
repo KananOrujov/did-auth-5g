@@ -14,4 +14,4 @@ python3 -m aries_cloudagent start \
   --auto-provision \
   --tails-server-base-url http://127.0.0.1:6543 \
   --log-level info \
-  2>&1 | tee /home/kali/did-auth/logs/issuer.log
+  2>&1 | tee /home/kali/did-auth-5g/logs/issuer.log

@@ -252,3 +252,61 @@ python3 revocation_test.py      # Revocation enforcement
 | imsi-001010000000004 | 1ab7dcfc-... | SST:1 | active |
 | imsi-001010000000005 | ee84735e-... | SST:1 | active |
 | imsi-001010000000006 | 95d3fb40-... | SST:2 | active (deny test) |
+
+---
+
+## Stage 3: Local Ledger vs BCovrin Comparison
+
+### Local Ledger Setup (von-network)
+
+For Stage 3, we deployed a local Hyperledger Indy ledger using von-network to isolate DIDComm protocol overhead from network latency.
+```bash
+# Start local ledger
+cd /home/kali/von-network
+./manage start
+
+# Start agents pointing to local ledger
+bash scripts/start-issuer-local.sh &
+bash scripts/start-holder-local.sh &
+bash scripts/start-verifier-local.sh &
+```
+
+**Local Ledger Credentials:**
+- Issuer DID: `YbmLV9CGCk8Uq1NAJqvD77`
+- Schema: `YbmLV9CGCk8Uq1NAJqvD77:2:5g-subscriber:1.0`
+- Cred Def: `YbmLV9CGCk8Uq1NAJqvD77:3:CL:9:revocable2`
+
+### Stage 3 Key Results
+
+| Metric | Local Ledger | BCovrin (Public) | Difference |
+|---|---|---|---|
+| Min latency | 2,421ms | 4,396ms | -1,975ms |
+| Max latency | 3,069ms | 5,181ms | -2,112ms |
+| **Avg latency** | **2,658ms** | **4,690ms** | **-2,033ms** |
+| Speedup | — | — | **1.8x faster** |
+
+### Key Finding
+
+**2,033ms** of BCovrin latency is pure network distance to the public ledger in Canada.
+The DIDComm protocol overhead itself is only **~2,658ms**.
+
+In a regional B5G deployment with a local or edge ledger:
+- DID authentication adds **< 3 seconds** overhead
+- This is acceptable for non-latency-critical B5G authentication scenarios
+- With caching: **~0ms** for repeat authentications
+
+### Updated Full Results Table
+
+| Metric | Result |
+|---|---|
+| Vanilla 5G auth | 256ms |
+| DID cold (BCovrin) | 4,690ms avg |
+| DID cold (Local ledger) | 2,658ms avg |
+| DID warm (cache hit) | ~0ms |
+| Ledger RTT overhead | 2,033ms |
+| Local ledger speedup | 1.8x |
+| Revocation enforcement | ✓ Confirmed |
+| Slice policy enforcement | ✓ Confirmed |
+| Fail-close (sidecar down) | ✓ Confirmed |
+| Traffic blocking (ICMP+TCP) | ✓ Confirmed |
+| Instant block/unblock | ✓ < 1 second |
