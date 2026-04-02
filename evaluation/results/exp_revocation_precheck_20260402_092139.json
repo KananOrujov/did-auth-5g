@@ -1,0 +1,15 @@
+{
+  "experiment": "revocation_precheck_speedup",
+  "timestamp": "20260402_092139",
+  "results": {
+    "active_credential_full_proof_ms": 4606,
+    "revoked_credential_precheck_ms": 75,
+    "speedup_factor": 61.4,
+    "time_saved_ms": 4531
+  },
+  "explanation": {
+    "old_behavior": "Revoked UE goes through full DIDComm proof (~4600ms) before denied",
+    "new_behavior": "Revoked UE checked via pre-check (~75ms), proof skipped entirely",
+    "thesis_value": "61x faster revocation enforcement for B5G real-time access control"
+  }
+}
