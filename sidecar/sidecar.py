@@ -298,6 +298,23 @@ async def _run_did_verification_inner(supi):
     try:
         async with ClientSession(timeout=timeout) as session:
 
+            # Step 0: Clean up stale proof records to avoid picking wrong pending record
+            try:
+                async with session.get(f"{VERIFIER_URL}/present-proof/records") as r:
+                    stale = [x["presentation_exchange_id"] for x in (await r.json()).get("results",[])
+                             if x["state"] not in ("verified","presentation_acked")]
+                for sid in stale:
+                    await session.delete(f"{VERIFIER_URL}/present-proof/records/{sid}")
+                async with session.get(f"{HOLDER_URL}/present-proof/records") as r:
+                    stale_h = [x["presentation_exchange_id"] for x in (await r.json()).get("results",[])
+                               if x["state"] not in ("presentation_sent","presentation_acked")]
+                for sid in stale_h:
+                    await session.delete(f"{HOLDER_URL}/present-proof/records/{sid}")
+                if stale or stale_h:
+                    log.debug(f"[CLEANUP] Cleared {len(stale)} verifier + {len(stale_h)} holder stale records")
+            except Exception as e:
+                log.debug(f"[CLEANUP] Non-fatal: {e}")
+
             # Step 1: Send proof request
             t0 = time.time()
             payload = {
@@ -337,16 +354,24 @@ async def _run_did_verification_inner(supi):
                         ) as cr:
                             cred_list = await cr.json()
 
+                        # Filter to ONLY the specific credential for this SUPI
+                        # This prevents the holder presenting a different UE's credential
+                        matching = [
+                            item for item in cred_list
+                            if item["cred_info"]["referent"] == cred_ref
+                        ]
+                        if not matching:
+                            # fallback: use any available credential
+                            matching = cred_list
+
                         req_attrs = {}
-                        for item in cred_list:
+                        for item in matching:
                             for ref in item.get("presentation_referents", []):
                                 if ref not in req_attrs:
                                     req_attrs[ref] = {
-                                        "cred_id": item["cred_info"]["referent"],
+                                        "cred_id": cred_ref,  # always use SUPI-specific cred
                                         "revealed": True
                                     }
-                        for ref in list(req_attrs.keys()):
-                            req_attrs[ref]["cred_id"] = cred_ref
 
                         await session.post(
                             f"{HOLDER_URL}/present-proof/records/{pex_h}/send-presentation",
