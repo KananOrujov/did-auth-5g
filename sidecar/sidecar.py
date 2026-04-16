@@ -585,11 +585,30 @@ async def handle_did_auth_protected(request):
     finally:
         _active_requests -= 1
 
-app = web.Application()
+async def cors_middleware(app, handler):
+    async def middleware(request):
+        if request.method == "OPTIONS":
+            return web.Response(headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type",
+            })
+        response = await handler(request)
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        return response
+    return middleware
+
+app = web.Application(middlewares=[cors_middleware])
 app.router.add_post("/did-auth",     handle_did_auth_protected)
 app.router.add_get("/health",        handle_health)
 app.router.add_get("/cache",         handle_cache_view)
 app.router.add_post("/cache/clear",  handle_cache_clear)
+app.router.add_route("OPTIONS", "/did-auth",    lambda r: web.Response())
+app.router.add_route("OPTIONS", "/health",      lambda r: web.Response())
+app.router.add_route("OPTIONS", "/cache",       lambda r: web.Response())
+app.router.add_route("OPTIONS", "/cache/clear", lambda r: web.Response())
 
 if __name__ == "__main__":
     log.info(f"Starting DID Auth Sidecar v4.2 on port {ARGS.port}")
@@ -597,4 +616,4 @@ if __name__ == "__main__":
     log.info(f"Fail mode: {'open' if FAIL_OPEN else 'close'}")
     log.info(f"Cache:     {'on' if CACHE_ENABLED else 'off'} (TTL={CACHE_TTL}s)")
     log.info(f"Verifier:  {VERIFIER_URL}")
-    web.run_app(app, host="127.0.0.1", port=ARGS.port)
+    web.run_app(app, host="0.0.0.0", port=ARGS.port)

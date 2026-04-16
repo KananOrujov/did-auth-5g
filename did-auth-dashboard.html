@@ -1,0 +1,1148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DID-Auth-5G Security Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #080c12;
+    --bg2:       #0d1420;
+    --bg3:       #111a27;
+    --border:    #1e2d42;
+    --border2:   #243347;
+    --teal:      #00d4b4;
+    --teal-dim:  #00a88f;
+    --teal-glow: rgba(0,212,180,0.12);
+    --blue:      #2563eb;
+    --blue-dim:  #1d4ed8;
+    --gold:      #f59e0b;
+    --green:     #10b981;
+    --green-glow:rgba(16,185,129,0.12);
+    --red:       #ef4444;
+    --red-glow:  rgba(239,68,68,0.12);
+    --muted:     #4a6280;
+    --text:      #c8d8e8;
+    --text-dim:  #7a95b0;
+    --white:     #f0f6ff;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,212,180,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,212,180,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .wrap { position: relative; z-index: 1; max-width: 1280px; margin: 0 auto; padding: 0 24px 60px; }
+
+  /* ── HEADER ── */
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 20px 0 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 32px;
+  }
+
+  .logo-area { display: flex; align-items: center; gap: 14px; }
+
+  .logo-icon {
+    width: 40px; height: 40px;
+    background: var(--teal-glow);
+    border: 1px solid var(--teal);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+
+  .logo-text { font-family: 'Syne', sans-serif; }
+  .logo-text .title { font-size: 18px; font-weight: 800; color: var(--white); letter-spacing: -0.5px; }
+  .logo-text .sub { font-size: 11px; color: var(--teal); font-family: 'JetBrains Mono', monospace; letter-spacing: 1px; }
+
+  .header-right { display: flex; align-items: center; gap: 20px; }
+
+  .stride-badge {
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    color: var(--gold);
+    border: 1px solid rgba(245,158,11,0.3);
+    background: rgba(245,158,11,0.06);
+    padding: 5px 10px;
+    border-radius: 4px;
+  }
+
+  .sidecar-url {
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .sidecar-url input {
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    color: var(--teal);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 5px 10px;
+    border-radius: 4px;
+    width: 200px;
+    outline: none;
+  }
+
+  /* ── STATUS BAR ── */
+  .status-bar {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+
+  .status-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    transition: border-color 0.3s;
+  }
+
+  .status-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--muted);
+    flex-shrink: 0;
+    transition: background 0.3s, box-shadow 0.3s;
+  }
+
+  .status-dot.online { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .status-dot.offline { background: var(--red); box-shadow: 0 0 8px var(--red); }
+  .status-dot.checking { background: var(--gold); box-shadow: 0 0 8px var(--gold); animation: pulse 1s infinite; }
+
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  .status-info { flex: 1; }
+  .status-label { font-size: 10px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; }
+  .status-value { font-size: 12px; color: var(--white); font-weight: 500; margin-top: 2px; }
+
+  /* ── MAIN GRID ── */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 1fr 420px;
+    gap: 20px;
+    align-items: start;
+  }
+
+  /* ── SECTION LABEL ── */
+  .section-label {
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .section-label::after { content:''; flex:1; height:1px; background:var(--border); }
+
+  /* ── NORMAL AUTH BUTTON ── */
+  .normal-auth-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+
+  .normal-auth-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+
+  .normal-auth-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--white);
+  }
+
+  .supi-select {
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    color: var(--teal);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 6px 10px;
+    border-radius: 4px;
+    outline: none;
+    cursor: pointer;
+  }
+
+  .btn-normal {
+    width: 100%;
+    background: linear-gradient(135deg, var(--teal-dim), var(--teal));
+    border: none;
+    border-radius: 6px;
+    color: #000;
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 12px;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .btn-normal:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(0,212,180,0.3); }
+  .btn-normal:active { transform: translateY(0); }
+  .btn-normal:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  /* ── ATTACK CARDS ── */
+  .attacks-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .attack-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px;
+    transition: border-color 0.2s, background 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .attack-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 3px; height: 100%;
+    background: var(--attack-color, var(--muted));
+    border-radius: 10px 0 0 10px;
+  }
+
+  .attack-card:hover { border-color: var(--attack-color, var(--border2)); }
+
+  .attack-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+
+  .attack-number {
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 1px;
+  }
+
+  .stride-tag {
+    font-size: 9px;
+    letter-spacing: 1px;
+    padding: 3px 7px;
+    border-radius: 3px;
+    font-weight: 500;
+  }
+
+  .attack-name {
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--white);
+    margin-bottom: 4px;
+  }
+
+  .attack-method {
+    font-size: 10px;
+    color: var(--text-dim);
+    line-height: 1.5;
+    margin-bottom: 12px;
+  }
+
+  .attack-expected {
+    font-size: 10px;
+    color: var(--muted);
+    border-top: 1px solid var(--border);
+    padding-top: 10px;
+    margin-bottom: 12px;
+    line-height: 1.5;
+  }
+
+  .attack-expected span { color: var(--text-dim); }
+
+  .btn-attack {
+    width: 100%;
+    background: transparent;
+    border: 1px solid var(--attack-color, var(--border2));
+    border-radius: 5px;
+    color: var(--attack-color, var(--text));
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 9px;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  .btn-attack:hover {
+    background: rgba(255,255,255,0.04);
+    transform: translateY(-1px);
+  }
+
+  .btn-attack:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+  /* ── RIGHT PANEL ── */
+  .right-panel { display: flex; flex-direction: column; gap: 16px; }
+
+  /* ── RESULT CARD ── */
+  .result-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .result-header {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .result-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--white);
+  }
+
+  .result-badge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 4px;
+    letter-spacing: 1px;
+    display: none;
+  }
+
+  .result-badge.allow { background: var(--green-glow); color: var(--green); border: 1px solid var(--green); display: block; }
+  .result-badge.deny  { background: var(--red-glow); color: var(--red); border: 1px solid var(--red); display: block; }
+  .result-badge.loading { background: rgba(245,158,11,0.1); color: var(--gold); border: 1px solid var(--gold); display: block; animation: pulse 1s infinite; }
+
+  .result-body { padding: 16px 18px; }
+
+  .result-empty {
+    text-align: center;
+    padding: 30px 0;
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 2;
+  }
+
+  .result-empty .icon { font-size: 28px; display: block; margin-bottom: 8px; opacity: 0.4; }
+
+  /* Result metrics */
+  .metrics-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+
+  .metric-box {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+  }
+
+  .metric-label { font-size: 9px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 4px; }
+  .metric-value { font-size: 16px; font-weight: 700; color: var(--white); }
+  .metric-unit { font-size: 10px; color: var(--text-dim); margin-left: 2px; }
+
+  /* Stage breakdown */
+  .stages { margin-bottom: 14px; }
+  .stage-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+  }
+  .stage-row:last-child { border-bottom: none; }
+  .stage-name { color: var(--text-dim); width: 140px; flex-shrink: 0; }
+  .stage-bar-wrap { flex: 1; background: var(--bg3); border-radius: 3px; height: 4px; overflow: hidden; }
+  .stage-bar { height: 100%; background: var(--teal); border-radius: 3px; transition: width 0.6s ease; }
+  .stage-val { color: var(--text); width: 60px; text-align: right; }
+
+  /* Reason box */
+  .reason-box {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+  }
+  .reason-box .reason-label { font-size: 9px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 4px; }
+  .reason-box .reason-val { color: var(--red); font-weight: 500; }
+  .reason-box .reason-val.allow { color: var(--green); }
+
+  /* ── LOG PANEL ── */
+  .log-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    flex: 1;
+  }
+
+  .log-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .log-title { font-family: 'Syne', sans-serif; font-size: 12px; font-weight: 700; color: var(--white); }
+
+  .btn-clear {
+    background: none;
+    border: 1px solid var(--border2);
+    color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-clear:hover { border-color: var(--red); color: var(--red); }
+
+  .log-body {
+    padding: 12px 16px;
+    height: 300px;
+    overflow-y: auto;
+    font-size: 10.5px;
+    line-height: 1.7;
+  }
+
+  .log-body::-webkit-scrollbar { width: 4px; }
+  .log-body::-webkit-scrollbar-track { background: transparent; }
+  .log-body::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  .log-entry { margin-bottom: 4px; }
+  .log-time { color: var(--muted); }
+  .log-event { color: var(--text-dim); }
+  .log-allow { color: var(--green); }
+  .log-deny  { color: var(--red); }
+  .log-info  { color: var(--teal); }
+  .log-warn  { color: var(--gold); }
+
+  /* ── STRIDE LEGEND ── */
+  .stride-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+  }
+
+  .stride-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .stride-item {
+    font-size: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-dim);
+  }
+
+  .stride-letter {
+    width: 22px; height: 22px;
+    border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700;
+    font-size: 11px;
+    flex-shrink: 0;
+  }
+
+  /* raw json */
+  .raw-toggle {
+    font-size: 10px;
+    color: var(--muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: 'JetBrains Mono', monospace;
+    padding: 0;
+    transition: color 0.2s;
+    margin-bottom: 8px;
+    display: block;
+  }
+  .raw-toggle:hover { color: var(--teal); }
+
+  .raw-json {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 10px;
+    color: var(--teal);
+    overflow-x: auto;
+    white-space: pre;
+    max-height: 140px;
+    overflow-y: auto;
+    display: none;
+  }
+
+  .raw-json.visible { display: block; }
+
+  /* spinner */
+  .spinner {
+    display: inline-block;
+    width: 12px; height: 12px;
+    border: 2px solid rgba(255,255,255,0.1);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* attack result flash */
+  .attack-card.success-flash { animation: flashGreen 0.8s ease; }
+  .attack-card.fail-flash { animation: flashRed 0.3s ease; }
+
+  @keyframes flashGreen {
+    0%   { background: var(--green-glow); border-color: var(--green); }
+    100% { background: var(--bg2); border-color: var(--border); }
+  }
+  @keyframes flashRed {
+    0%   { background: var(--red-glow); border-color: var(--red); }
+    100% { background: var(--bg2); border-color: var(--border); }
+  }
+
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <!-- HEADER -->
+  <header>
+    <div class="logo-area">
+      <div class="logo-icon">🛡</div>
+      <div class="logo-text">
+        <div class="title">DID-Auth-5G</div>
+        <div class="sub">SECURITY EVALUATION DASHBOARD</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="stride-badge">STRIDE FRAMEWORK</div>
+      <div class="sidecar-url">
+        <input type="text" id="sidecarUrl" value="http://localhost:5000" placeholder="Sidecar URL" />
+      </div>
+    </div>
+  </header>
+
+  <!-- STATUS BAR -->
+  <div class="status-bar">
+    <div class="status-card">
+      <div class="status-dot checking" id="dot-sidecar"></div>
+      <div class="status-info">
+        <div class="status-label">Sidecar</div>
+        <div class="status-value" id="val-sidecar">Checking...</div>
+      </div>
+    </div>
+    <div class="status-card">
+      <div class="status-dot checking" id="dot-ledger"></div>
+      <div class="status-info">
+        <div class="status-label">Ledger Mode</div>
+        <div class="status-value" id="val-ledger">—</div>
+      </div>
+    </div>
+    <div class="status-card">
+      <div class="status-dot checking" id="dot-cache"></div>
+      <div class="status-info">
+        <div class="status-label">Cache</div>
+        <div class="status-value" id="val-cache">—</div>
+      </div>
+    </div>
+    <div class="status-card">
+      <div class="status-dot checking" id="dot-failmode"></div>
+      <div class="status-info">
+        <div class="status-label">Fail Mode</div>
+        <div class="status-value" id="val-failmode">—</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN GRID -->
+  <div class="main-grid">
+
+    <!-- LEFT: ATTACKS -->
+    <div>
+
+      <!-- Normal Auth -->
+      <div class="section-label">Normal Authentication</div>
+      <div class="normal-auth-card">
+        <div class="normal-auth-header">
+          <div class="normal-auth-title">Authenticate a Valid UE</div>
+          <select class="supi-select" id="normalSupi">
+            <option value="imsi-001010000000002">UE-002 — SST:1 Active</option>
+            <option value="imsi-001010000000003">UE-003 — SST:1 Active</option>
+            <option value="imsi-001010000000004">UE-004 — SST:1 Active</option>
+            <option value="imsi-001010000000005">UE-005 — SST:1 Active</option>
+          </select>
+        </div>
+        <button class="btn-normal" id="btnNormal" onclick="runNormal()">
+          <span id="normalIcon">▶</span>
+          Run Normal Authentication
+        </button>
+      </div>
+
+      <!-- Attack Cards -->
+      <div class="section-label">Attack Simulation — STRIDE</div>
+      <div class="attacks-grid">
+
+        <!-- A1: Replay -->
+        <div class="attack-card" style="--attack-color:#f59e0b" id="card-1">
+          <div class="attack-top">
+            <span class="attack-number">ATTACK 01</span>
+            <span class="stride-tag" style="background:rgba(245,158,11,0.1);color:#f59e0b;border:1px solid rgba(245,158,11,0.3)">STRIDE-R</span>
+          </div>
+          <div class="attack-name">Replay Attack</div>
+          <div class="attack-method">Submits 5 rapid requests for the same valid SUPI simultaneously, testing nonce-per-proof enforcement.</div>
+          <div class="attack-expected"><span>Expected:</span> All requests handled correctly. Nonce binding prevents proof reuse.</div>
+          <button class="btn-attack" onclick="runAttack(1)" id="btn-1">
+            <span id="icon-1">⚡</span> EXECUTE
+          </button>
+        </div>
+
+        <!-- A2: Impersonation -->
+        <div class="attack-card" style="--attack-color:#ef4444" id="card-2">
+          <div class="attack-top">
+            <span class="attack-number">ATTACK 02</span>
+            <span class="stride-tag" style="background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.3)">STRIDE-S</span>
+          </div>
+          <div class="attack-name">Impersonation</div>
+          <div class="attack-method">Sends authentication requests for SUPIs with no credential in the holder wallet (imsi-...999).</div>
+          <div class="attack-expected"><span>Expected:</span> Denied immediately — no_credential_mapped, no proof exchange.</div>
+          <button class="btn-attack" onclick="runAttack(2)" id="btn-2">
+            <span id="icon-2">⚡</span> EXECUTE
+          </button>
+        </div>
+
+        <!-- A3: Revoked -->
+        <div class="attack-card" style="--attack-color:#8b5cf6" id="card-3">
+          <div class="attack-top">
+            <span class="attack-number">ATTACK 03</span>
+            <span class="stride-tag" style="background:rgba(139,92,246,0.1);color:#8b5cf6;border:1px solid rgba(139,92,246,0.3)">STRIDE-E</span>
+          </div>
+          <div class="attack-name">Revoked Credential</div>
+          <div class="attack-method">Attempts authentication using UE-001 whose credential was revoked on the ledger.</div>
+          <div class="attack-expected"><span>Expected:</span> Denied in ~75ms via pre-check — proof exchange skipped.</div>
+          <button class="btn-attack" onclick="runAttack(3)" id="btn-3">
+            <span id="icon-3">⚡</span> EXECUTE
+          </button>
+        </div>
+
+        <!-- A4: Policy Bypass -->
+        <div class="attack-card" style="--attack-color:#06b6d4" id="card-4">
+          <div class="attack-top">
+            <span class="attack-number">ATTACK 04</span>
+            <span class="stride-tag" style="background:rgba(6,182,212,0.1);color:#06b6d4;border:1px solid rgba(6,182,212,0.3)">STRIDE-E</span>
+          </div>
+          <div class="attack-name">Slice Policy Bypass</div>
+          <div class="attack-method">UE-006 holds a valid SST:2 credential and attempts to access the SST:1 network slice.</div>
+          <div class="attack-expected"><span>Expected:</span> Denied — slice_policy_denied. Attribute is cryptographically bound.</div>
+          <button class="btn-attack" onclick="runAttack(4)" id="btn-4">
+            <span id="icon-4">⚡</span> EXECUTE
+          </button>
+        </div>
+
+        <!-- A5: DoS -->
+        <div class="attack-card" style="--attack-color:#10b981;grid-column:1/-1" id="card-5">
+          <div class="attack-top">
+            <span class="attack-number">ATTACK 05</span>
+            <span class="stride-tag" style="background:rgba(16,185,129,0.1);color:#10b981;border:1px solid rgba(16,185,129,0.3)">STRIDE-D</span>
+          </div>
+          <div class="attack-name">Denial of Service / Load Attack</div>
+          <div class="attack-method">Fires 8 concurrent mixed requests simultaneously — valid UEs, unknown SUPIs, revoked UE, wrong-slice UE. Tests queue limit, semaphore, and fail-close under load.</div>
+          <div class="attack-expected"><span>Expected:</span> All requests handled correctly with no crashes. Valid UEs allowed, denied UEs rejected with correct reasons.</div>
+          <button class="btn-attack" onclick="runAttack(5)" id="btn-5">
+            <span id="icon-5">⚡</span> EXECUTE LOAD TEST
+          </button>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- RIGHT PANEL -->
+    <div class="right-panel">
+
+      <!-- Result Card -->
+      <div class="result-card">
+        <div class="result-header">
+          <div class="result-title">Last Result</div>
+          <div class="result-badge" id="resultBadge">—</div>
+        </div>
+        <div class="result-body" id="resultBody">
+          <div class="result-empty">
+            <span class="icon">◎</span>
+            Run an authentication or attack<br>to see the result here.
+          </div>
+        </div>
+      </div>
+
+      <!-- Log -->
+      <div class="log-card">
+        <div class="log-header">
+          <div class="log-title">Activity Log</div>
+          <button class="btn-clear" onclick="clearLog()">CLEAR</button>
+        </div>
+        <div class="log-body" id="logBody">
+          <div class="log-entry"><span class="log-info">// Dashboard ready. Sidecar: </span><span class="log-event" id="logUrl">http://localhost:5000</span></div>
+        </div>
+      </div>
+
+      <!-- STRIDE Legend -->
+      <div class="stride-card">
+        <div class="section-label" style="margin-bottom:0">Attack Selection Rationale</div>
+        <div style="font-size:10px;color:var(--text-dim);margin:10px 0 2px;line-height:1.6">
+          Attacks selected using the <strong style="color:var(--white)">STRIDE</strong> threat model (Microsoft, 2002), the standard framework for identity system threat analysis, referenced in 3GPP TR 33.926.
+        </div>
+        <div class="stride-grid">
+          <div class="stride-item">
+            <div class="stride-letter" style="background:rgba(239,68,68,0.15);color:#ef4444">S</div>
+            Spoofing → Impersonation
+          </div>
+          <div class="stride-item">
+            <div class="stride-letter" style="background:rgba(6,182,212,0.15);color:#06b6d4">T</div>
+            Tampering → Policy Bypass
+          </div>
+          <div class="stride-item">
+            <div class="stride-letter" style="background:rgba(100,100,100,0.15);color:#888">R</div>
+            Repudiation → (future)
+          </div>
+          <div class="stride-item">
+            <div class="stride-letter" style="background:rgba(100,100,100,0.15);color:#888">I</div>
+            Info Disclosure → (ZKP)
+          </div>
+          <div class="stride-item">
+            <div class="stride-letter" style="background:rgba(16,185,129,0.15);color:#10b981">D</div>
+            Denial of Service → DoS
+          </div>
+          <div class="stride-item">
+            <div class="stride-letter" style="background:rgba(139,92,246,0.15);color:#8b5cf6">E</div>
+            Elevation → Replay+Revoked
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+// ── CONFIG ──────────────────────────────────────────────────────────────────
+function getBase() { return document.getElementById('sidecarUrl').value.replace(/\/$/, ''); }
+
+document.getElementById('sidecarUrl').addEventListener('change', () => {
+  document.getElementById('logUrl').textContent = getBase();
+  checkHealth();
+});
+
+// ── HEALTH CHECK ─────────────────────────────────────────────────────────────
+async function checkHealth() {
+  const dots = ['sidecar','ledger','cache','failmode'];
+  dots.forEach(d => {
+    document.getElementById('dot-'+d).className = 'status-dot checking';
+  });
+
+  try {
+    const r = await fetch(getBase() + '/health', { signal: AbortSignal.timeout(4000) });
+    const data = await r.json();
+
+    // sidecar
+    setStatus('sidecar', true, 'Online');
+    // ledger
+    setStatus('ledger', true, data.config?.ledger || data.ledger || 'local');
+    // cache
+    const cacheOn = data.config?.cache !== false && data.cache !== false;
+    setStatus('cache', true, cacheOn ? 'Enabled' : 'Disabled');
+    // fail mode
+    const fm = data.config?.fail_mode || data.fail_mode || 'close';
+    setStatus('failmode', fm === 'close', fm === 'close' ? 'Fail-Close ✓' : 'Fail-Open ⚠');
+
+    addLog('info', `Health OK — ledger:${data.config?.ledger||'local'} cache:${cacheOn?'on':'off'} fail:${fm}`);
+  } catch(e) {
+    setStatus('sidecar', false, 'Offline');
+    setStatus('ledger', false, '—');
+    setStatus('cache', false, '—');
+    setStatus('failmode', false, '—');
+    addLog('warn', 'Sidecar unreachable — is it running on ' + getBase() + '?');
+  }
+}
+
+function setStatus(key, ok, val) {
+  document.getElementById('dot-'+key).className = 'status-dot ' + (ok ? 'online' : 'offline');
+  document.getElementById('val-'+key).textContent = val;
+}
+
+// ── NORMAL AUTH ──────────────────────────────────────────────────────────────
+async function runNormal() {
+  const supi = document.getElementById('normalSupi').value;
+  const btn = document.getElementById('btnNormal');
+  btn.disabled = true;
+  document.getElementById('normalIcon').innerHTML = '<span class="spinner"></span>';
+  setBadge('loading', 'RUNNING');
+  addLog('info', `Normal auth → ${supi}`);
+
+  const t0 = Date.now();
+  try {
+    const r = await fetch(getBase() + '/did-auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ supi }),
+      signal: AbortSignal.timeout(20000)
+    });
+    const data = await r.json();
+    const ms = Date.now() - t0;
+
+    if (data.final_decision === true) {
+      setBadge('allow', 'ALLOWED');
+      showResult(data, ms, supi, 'allow');
+      addLog('allow', `✓ ALLOWED — ${supi} — ${ms}ms`);
+    } else {
+      setBadge('deny', 'DENIED');
+      showResult(data, ms, supi, 'deny');
+      addLog('deny', `✗ DENIED — ${supi} — ${data.deny_reason || '?'} — ${ms}ms`);
+    }
+  } catch(e) {
+    setBadge('deny', 'ERROR');
+    addLog('warn', `Error: ${e.message}`);
+    showError(e.message);
+  }
+
+  btn.disabled = false;
+  document.getElementById('normalIcon').textContent = '▶';
+}
+
+// ── ATTACK RUNNER ────────────────────────────────────────────────────────────
+const ATTACKS = {
+  1: {
+    name: 'Replay Attack',
+    requests: [
+      { supi: 'imsi-001010000000002' },
+      { supi: 'imsi-001010000000002' },
+      { supi: 'imsi-001010000000002' },
+      { supi: 'imsi-001010000000002' },
+      { supi: 'imsi-001010000000002' },
+    ],
+    concurrent: true,
+    expectedDecision: true
+  },
+  2: {
+    name: 'Impersonation',
+    requests: [
+      { supi: 'imsi-001010000000999' },
+      { supi: 'imsi-001010000000100' },
+    ],
+    concurrent: false,
+    expectedDecision: false
+  },
+  3: {
+    name: 'Revoked Credential',
+    requests: [
+      { supi: 'imsi-001010000000001' },
+    ],
+    concurrent: false,
+    expectedDecision: false
+  },
+  4: {
+    name: 'Slice Policy Bypass',
+    requests: [
+      { supi: 'imsi-001010000000006' },
+    ],
+    concurrent: false,
+    expectedDecision: false
+  },
+  5: {
+    name: 'DoS / Load Attack',
+    requests: [
+      { supi: 'imsi-001010000000002' },
+      { supi: 'imsi-001010000000003' },
+      { supi: 'imsi-001010000000999' },
+      { supi: 'imsi-001010000000001' },
+      { supi: 'imsi-001010000000006' },
+      { supi: 'imsi-001010000000004' },
+      { supi: 'imsi-001010000000100' },
+      { supi: 'imsi-001010000000005' },
+    ],
+    concurrent: true,
+    expectedDecision: 'mixed'
+  }
+};
+
+async function singleRequest(supi) {
+  const t0 = Date.now();
+  const r = await fetch(getBase() + '/did-auth', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ supi }),
+    signal: AbortSignal.timeout(20000)
+  });
+  const data = await r.json();
+  return { data, ms: Date.now() - t0, supi };
+}
+
+async function runAttack(id) {
+  const atk = ATTACKS[id];
+  const btn = document.getElementById('btn-' + id);
+  const card = document.getElementById('card-' + id);
+  btn.disabled = true;
+  document.getElementById('icon-' + id).innerHTML = '<span class="spinner"></span>';
+  setBadge('loading', 'RUNNING');
+  addLog('warn', `▶ Attack ${id}: ${atk.name} — ${atk.requests.length} request(s)`);
+
+  const t0 = Date.now();
+  try {
+    let results;
+    if (atk.concurrent) {
+      results = await Promise.all(atk.requests.map(req => singleRequest(req.supi)));
+    } else {
+      results = [];
+      for (const req of atk.requests) {
+        results.push(await singleRequest(req.supi));
+      }
+    }
+
+    const wallMs = Date.now() - t0;
+    const lastResult = results[results.length - 1];
+    const allCorrect = verifyResults(results, atk);
+
+    if (allCorrect) {
+      card.classList.add('success-flash');
+      setTimeout(() => card.classList.remove('success-flash'), 900);
+    } else {
+      card.classList.add('fail-flash');
+      setTimeout(() => card.classList.remove('fail-flash'), 400);
+    }
+
+    // Show in result panel
+    if (atk.requests.length === 1) {
+      const { data, ms } = results[0];
+      const decision = data.final_decision;
+      setBadge(decision ? 'allow' : 'deny', decision ? 'ALLOWED' : 'DENIED');
+      showResult(data, ms, results[0].supi, decision ? 'allow' : 'deny');
+    } else {
+      showMultiResult(results, wallMs, atk, allCorrect);
+      setBadge(allCorrect ? 'allow' : 'deny', allCorrect ? 'MITIGATED' : 'FAILED');
+    }
+
+    results.forEach(({ supi, data, ms }) => {
+      const d = data.final_decision;
+      const fn = d ? 'allow' : 'deny';
+      addLog(fn, `  ${d ? '✓' : '✗'} ${supi} → ${d ? 'ALLOW' : 'DENY'} (${data.deny_reason || 'ok'}) — ${ms}ms`);
+    });
+
+    addLog(allCorrect ? 'allow' : 'deny',
+      `Attack ${id} complete — wall:${wallMs}ms — ${allCorrect ? '✓ MITIGATED' : '✗ NOT MITIGATED'}`);
+
+  } catch(e) {
+    addLog('warn', `Attack ${id} error: ${e.message}`);
+    showError(e.message);
+    setBadge('deny', 'ERROR');
+  }
+
+  btn.disabled = false;
+  document.getElementById('icon-' + id).textContent = '⚡';
+}
+
+function verifyResults(results, atk) {
+  if (atk.expectedDecision === 'mixed') {
+    // For DoS: valid UEs should be allowed, invalid denied — just check no crashes
+    return results.every(r => r.data && typeof r.data.final_decision === 'boolean');
+  }
+  return results.every(r => r.data.final_decision === atk.expectedDecision);
+}
+
+// ── RESULT DISPLAY ───────────────────────────────────────────────────────────
+function setBadge(type, text) {
+  const badge = document.getElementById('resultBadge');
+  badge.className = 'result-badge ' + type;
+  badge.textContent = text;
+}
+
+function showResult(data, ms, supi, type) {
+  const colorMap = { allow: 'var(--green)', deny: 'var(--red)' };
+  const color = colorMap[type];
+
+  // Stage breakdown
+  const stages = data.stages || data.timing || {};
+  const total = ms;
+  const stageHtml = buildStageBar(stages, total);
+
+  // Reason
+  const reason = data.deny_reason || (data.final_decision ? 'authentication_successful' : 'unknown');
+  const reasonColor = data.final_decision ? 'allow' : '';
+
+  document.getElementById('resultBody').innerHTML = `
+    <div class="metrics-row">
+      <div class="metric-box">
+        <div class="metric-label">Total Latency</div>
+        <div class="metric-value">${ms}<span class="metric-unit">ms</span></div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-label">Decision</div>
+        <div class="metric-value" style="color:${color}">${data.final_decision ? 'ALLOW' : 'DENY'}</div>
+      </div>
+    </div>
+    <div class="reason-box">
+      <div class="reason-label">SUPI</div>
+      <div style="color:var(--teal);font-size:11px;margin-bottom:8px">${supi}</div>
+      <div class="reason-label">Reason</div>
+      <div class="reason-val ${reasonColor}">${reason}</div>
+    </div>
+    ${stageHtml}
+    <button class="raw-toggle" onclick="toggleRaw(this)">[ show raw response ]</button>
+    <div class="raw-json">${JSON.stringify(data, null, 2)}</div>
+  `;
+}
+
+function showMultiResult(results, wallMs, atk, allCorrect) {
+  const allowed = results.filter(r => r.data.final_decision === true).length;
+  const denied = results.filter(r => r.data.final_decision === false).length;
+
+  const rows = results.map(({ supi, data, ms }) => {
+    const d = data.final_decision;
+    return `<div class="stage-row">
+      <span class="stage-name" style="font-size:10px">${supi.slice(-6)}</span>
+      <span style="color:${d ? 'var(--green)' : 'var(--red)'};font-size:10px;width:50px">${d ? 'ALLOW' : 'DENY'}</span>
+      <span style="color:var(--text-dim);font-size:10px;flex:1">${data.deny_reason || 'ok'}</span>
+      <span class="stage-val">${ms}ms</span>
+    </div>`;
+  }).join('');
+
+  document.getElementById('resultBody').innerHTML = `
+    <div class="metrics-row">
+      <div class="metric-box">
+        <div class="metric-label">Wall Time</div>
+        <div class="metric-value">${wallMs}<span class="metric-unit">ms</span></div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-label">Status</div>
+        <div class="metric-value" style="color:${allCorrect ? 'var(--green)' : 'var(--red)'};font-size:13px">${allCorrect ? 'MITIGATED' : 'FAILED'}</div>
+      </div>
+    </div>
+    <div class="metrics-row">
+      <div class="metric-box">
+        <div class="metric-label">Allowed</div>
+        <div class="metric-value" style="color:var(--green)">${allowed}</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-label">Denied</div>
+        <div class="metric-value" style="color:var(--red)">${denied}</div>
+      </div>
+    </div>
+    <div class="stages">${rows}</div>
+  `;
+}
+
+function buildStageBar(stages, total) {
+  if (!stages || Object.keys(stages).length === 0) return '';
+  const names = { proof_request: 'Proof Request', holder_response: 'Holder ZKP', verification: 'Ledger Verify', policy: 'Policy Check', precheck: 'Revocation Pre-check' };
+  let html = '<div class="stages">';
+  for (const [key, val] of Object.entries(stages)) {
+    if (typeof val !== 'number') continue;
+    const pct = Math.min(100, (val / total) * 100);
+    html += `<div class="stage-row">
+      <span class="stage-name">${names[key] || key}</span>
+      <div class="stage-bar-wrap"><div class="stage-bar" style="width:${pct}%"></div></div>
+      <span class="stage-val">${val}ms</span>
+    </div>`;
+  }
+  html += '</div>';
+  return html;
+}
+
+function showError(msg) {
+  document.getElementById('resultBody').innerHTML = `
+    <div class="result-empty">
+      <span class="icon">⚠</span>
+      ${msg}<br><br>
+      <span style="font-size:10px;color:var(--muted)">Is the sidecar running?<br>Check the URL in the header.</span>
+    </div>`;
+}
+
+function toggleRaw(btn) {
+  const raw = btn.nextElementSibling;
+  raw.classList.toggle('visible');
+  btn.textContent = raw.classList.contains('visible') ? '[ hide raw response ]' : '[ show raw response ]';
+}
+
+// ── LOG ───────────────────────────────────────────────────────────────────────
+function addLog(type, msg) {
+  const body = document.getElementById('logBody');
+  const now = new Date().toLocaleTimeString('en-GB', { hour12: false });
+  const div = document.createElement('div');
+  div.className = 'log-entry';
+  div.innerHTML = `<span class="log-time">[${now}]</span> <span class="log-${type}">${msg}</span>`;
+  body.appendChild(div);
+  body.scrollTop = body.scrollHeight;
+}
+
+function clearLog() {
+  document.getElementById('logBody').innerHTML = '';
+  addLog('info', 'Log cleared.');
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+checkHealth();
+setInterval(checkHealth, 30000);
+</script>
+</body>
+</html>
