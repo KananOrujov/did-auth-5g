@@ -297,7 +297,7 @@ This is the SQLite Askar wallet's file-level locking, mitigated by the concurren
 slug: did-auth-5g
 title: Decentralized Identity Management for 5G Networks
 summary: Removes the centralized trust dependency in 5G authentication by integrating DID-based Self-Sovereign Identity into a real 5G Standalone core. Credentials, revocation registries, and network slice policy are anchored on a Hyperledger Indy distributed ledger and verifiable by any party, eliminating the home-network operator as the single point of authority.
-startDate: 2025-09-01
+startDate: 2026-01-15
 endDate: 2026-04-30
 repositoryUrl: https://github.com/KananOrujov/did-auth-5g
 logos: []
