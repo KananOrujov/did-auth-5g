@@ -1,333 +1,304 @@
 # DID-Based Identity Management for 5G Networks
 
-**MSc Thesis Implementation**
-*"On the Decentralization of Identity Management in B5G Networks"*
-ELTE Faculty of Informatics | Supervisor: Dr. Mohammed B. Alshawki | Author: Kanan Orujov
+MSc thesis implementation accompanying *On the Decentralization of Identity Management in B5G Networks* (ELTE Faculty of Informatics, 2026). This repository contains the full source code, deployment scripts, evaluation suite, and experimental results for a decentralized identity authentication layer integrated into a real 5G Standalone core network using Self-Sovereign Identity principles, Hyperledger Indy, and Aries Cloud Agent Python.
 
----
+## Table of Contents
+
+1. [Overview](#overview)
+2. [System Requirements](#system-requirements)
+3. [Architecture](#architecture)
+4. [Repository Structure](#repository-structure)
+5. [Software Installation](#software-installation)
+6. [Configuration](#configuration)
+7. [Quick Start](#quick-start)
+8. [Authentication Flow](#authentication-flow)
+9. [Validation and Testing](#validation-and-testing)
+10. [Experimental Results](#experimental-results)
+11. [Security Properties](#security-properties)
+12. [Troubleshooting](#troubleshooting)
+13. [References](#references)
 
 ## Overview
 
-This repository contains the full implementation of a decentralized identity management system integrated into a 5G Standalone (SA) core network using Self-Sovereign Identity (SSI) principles.
+The 5G Authentication and Key Agreement (5G-AKA) protocol authenticates devices through a centralized model in which every access decision depends on the home network operator's infrastructure. This creates scalability bottlenecks, single points of failure, high latency in distributed scenarios, and constrained privacy guarantees, limitations that become increasingly problematic as networks evolve toward Beyond Fifth Generation environments.
 
-The system integrates DID-based authentication directly into the 5G AUSF (Authentication Server Function), enforcing credential verification, revocation checking, and network slice policy before allowing UE registration. The implementation supports both a public BCovrin ledger and a local von-network Hyperledger Indy ledger.
+This project integrates Self-Sovereign Identity directly into the 5G AUSF (Authentication Server Function) by intercepting every UE registration attempt and delegating the identity verification decision to a Python sidecar before the standard 5G-AKA procedure continues. The sidecar coordinates a four-stage verification pipeline: dynamic credential lookup, revocation pre-check, DIDComm proof exchange using Anoncreds CL Zero-Knowledge Proofs, and extended policy evaluation covering network slice entitlement, subscription type, and issuer trust. Denied UEs are blocked at both the control plane through Registration Reject and the user plane through iptables rules applied within one second of denial.
 
----
+## System Requirements
 
-## Stack
+### Tested Specs
+
+- OS: Kali Linux (kernel 6.x)
+- CPU: 4 cores or more
+- RAM: 8 GB minimum (16 GB recommended for concurrent stress tests)
+- Disk: 20 GB free
+- Network: localhost loopback only (no external connectivity required for local ledger mode)
+
+### Required Software Versions
+
+- Open5GS v2.7.6
+- UERANSIM v3.2.7
+- ACA-Py 1.0.1
+- Python 3.13
+- Docker 27.5.1
+- MongoDB 6.x
+
+## Architecture
+
+### System Layers
+
+The system consists of four concurrently operating layers: the 5G network layer (Open5GS core functions and UERANSIM), the DID sidecar layer (Python with aiohttp), the SSI agent layer (three ACA-Py agents (issuer, holder, verifier), each with its own Askar wallet), and the ledger layer (Hyperledger Indy via von-network or BCovrin).
+
+### Component Diagram
+
+The flow proceeds top-down from UE through the 5G core to the SSI layer:
+
+- UE -> gNB -> AMF -> AUSF (C patch) -> Sidecar (Python v4.2)
+- Sidecar fans out to three parallel checks: Wallet Query, Revocation Pre-check, Policy Evaluation
+- Sidecar then drives DIDComm: ACA-Py Verifier <-> ACA-Py Holder
+- Verifier consults Hyperledger Indy Ledger (von-network or BCovrin)
+- Denial path: blocked_ues.txt -> upf_enforcer.sh -> iptables DID_BLOCK chain
+
+### Software Stack
 
 | Component | Version | Role |
 |---|---|---|
-| Open5GS | v2.7.6 | 5G SA core network |
+| Open5GS | v2.7.6 | 5G SA core (AMF, SMF, UPF, AUSF, UDM, NRF, PCF) |
 | UERANSIM | v3.2.7 | gNB + UE simulator |
 | ACA-Py | 1.0.1 | SSI agents (Issuer, Holder, Verifier) |
-| Hyperledger Indy | von-network | Local distributed ledger |
-| BCovrin Test | Public | Public Hyperledger Indy ledger |
-| Python | 3.13 | DID Auth Sidecar v4.2 |
-| Docker | 27.5.1 | von-network containerized ledger |
-
----
-
-## Architecture
-UE → gNB → AMF → AUSF (C patch) → Sidecar (Python v4.2) → ACA-Py Verifier → Indy Ledger
-↓
-blocked_ues.txt
-↓
-upf_enforcer.sh → iptables DID_BLOCK
-
-### Authentication Flow
-
-1. UE sends Registration Request to AMF
-2. AMF forwards to AUSF for 5G-AKA
-3. **AUSF C patch** calls sidecar at `http://127.0.0.1:5000/did-auth` with SUPI
-4. Sidecar performs **revocation pre-check** (skips proof if already known revoked — ~75ms)
-5. Sidecar sends proof request to ACA-Py Verifier
-6. Holder agent presents Verifiable Credential proof (ZKP — reveals only SUPI, IMSI, slice)
-7. Verifier checks: cryptographic validity + revocation status + network slice + issuer trust
-8. Sidecar returns structured decision to AUSF:
-   - HTTP 200 → `final_decision: true` → authentication proceeds
-   - HTTP 403 → `final_decision: false` → AUSF rejects with Registration Reject
-9. On deny: sidecar writes SUPI to `blocked_ues.txt`
-10. `upf_enforcer.sh` instantly applies iptables DROP rules via inotifywait
-
----
+| von-network | Docker | Local Hyperledger Indy ledger (4 nodes) |
+| BCovrin Test | Public | Public Hyperledger Indy test ledger |
+| Python | 3.13 | DID Authentication Sidecar v4.2 |
+| Docker | 27.5.1 | Container runtime for von-network |
+| MongoDB | 6.x | Open5GS subscriber profile storage |
 
 ## Repository Structure
-sidecar/
-sidecar.py              # DID auth sidecar v4.2
-# Configurable: --ledger, --cache, --fail-mode, --port
-# Features: dynamic wallet lookup, revocation pre-check,
-# extended policy (slice+type+issuer), load protection,
-# structured JSON logging, latency breakdown
-scripts/
-start-full-stack.sh     # ONE-COMMAND full stack startup (bcovrin or local mode)
-setup_credentials.py    # Auto setup: connections + issue + store + sidecar update
-start-local-ledger.sh   # Start von-network local Indy ledger
-start-issuer.sh         # ACA-Py issuer agent (BCovrin)
-start-holder.sh         # ACA-Py holder agent (BCovrin)
-start-verifier.sh       # ACA-Py verifier agent (BCovrin)
-start-issuer-local.sh   # ACA-Py issuer agent (local ledger)
-start-holder-local.sh   # ACA-Py holder agent (local ledger)
-start-verifier-local.sh # ACA-Py verifier agent (local ledger)
-ue_ip_map.sh            # SUPI→IP mapper (watches SMF logs)
-upf_enforcer.sh         # UPF iptables enforcer v3.1 (inotifywait)
-ausf-patch/
-nudm-handler.c          # Modified AUSF: DID auth check, 15s timeout,
-# fail-close, 30s in-memory cache (C-level)
-config/
-open5gs-gnb.yaml        # UERANSIM gNB config
-open5gs-ue.yaml         # UERANSIM UE config
-evaluation/
-concurrent_stress_test.py  # Concurrent UE stress test (2/4/5/10 UEs)
-security_tests.py          # Security evaluation (5 attack scenarios)
-latency_comparison.py      # Vanilla vs DID latency
-multi_ue_test.py           # Multi-UE sequential + concurrent
-revocation_test.py         # Revocation enforcement
-run_experiments.py         # Master experiment runner
-results/                   # All CSV + JSON experiment results
-thesis-results.txt           # Raw experimental results log
 
----
+### sidecar/
 
-## Quick Start
+Contains the DID authentication orchestration layer.
 
-### Option A: BCovrin Public Ledger (internet required)
-```bash
-bash scripts/start-full-stack.sh bcovrin
-```
+- sidecar.py: DID auth sidecar v4.2, configurable via --ledger, --cache, --fail-mode, --port. Implements dynamic wallet lookup, revocation pre-check, extended policy evaluation, load protection, structured JSON logging, and per-stage latency breakdown.
 
-### Option B: Local Ledger (offline, faster)
-```bash
-# Start local Indy ledger (Docker required)
-bash scripts/start-local-ledger.sh
+### scripts/
 
-# Start full stack in local mode
-bash scripts/start-full-stack.sh local
+Contains deployment, setup, and runtime helper scripts.
 
-# First time only: setup credentials
-python3 scripts/setup_credentials.py local
-```
+- start-full-stack.sh: one-command startup of the full stack (bcovrin or local mode)
+- setup_credentials.py: automated setup, DIDComm connections, credential issuance, wallet storage, sidecar configuration update
+- start-local-ledger.sh: start von-network local Indy ledger
+- start-issuer.sh, start-holder.sh, start-verifier.sh: ACA-Py agents (BCovrin)
+- start-issuer-local.sh, start-holder-local.sh, start-verifier-local.sh: ACA-Py agents (local ledger)
+- ue_ip_map.sh: SUPI-to-IP mapper that watches SMF logs
+- upf_enforcer.sh: UPF iptables enforcer v3.1 driven by inotifywait
 
-### Test Authentication
-```bash
-# Allow case
-curl -s -X POST http://localhost:5000/did-auth \
-  -H "Content-Type: application/json" \
-  -d '{"supi":"imsi-001010000000002"}' | python3 -m json.tool
+### ausf-patch/
 
-# Check health + config
-curl -s http://localhost:5000/health | python3 -m json.tool
-```
+Contains the C-language patch to the Open5GS AUSF.
 
----
+- nudm-handler.c: modified AUSF source with DID auth check, 15-second timeout, fail-close error handling, and a 30-second in-memory C-level decision cache.
 
-## Sidecar v4.2 — Configuration
-```bash
-python3 sidecar/sidecar.py \
-  --ledger    local|bcovrin  # Ledger mode (default: local)
-  --cache     on|off         # Result caching (default: on)
-  --cache-ttl 300            # Cache TTL in seconds (default: 300)
-  --fail-mode close|open     # Fail-close or fail-open (default: close)
-  --port      5000           # Port (default: 5000)
-```
+### config/
 
-### Decision Response
-```json
-{
-  "final_decision": true,
-  "proof_verified": true,
-  "revocation_ok": true,
-  "policy_allowed": true,
-  "reason": "all_checks_passed",
-  "supi": "imsi-001010000000002",
-  "slice": "SST:1",
-  "cache_hit": false,
-  "timings_ms": {
-    "proof_request_ms": 120,
-    "holder_response_ms": 1358,
-    "verification_ms": 1181,
-    "total_ms": 2658
-  },
-  "config": {
-    "ledger": "local",
-    "cache": true,
-    "fail_mode": "close"
-  }
-}
-```
+UERANSIM configuration files.
 
-### Deny Reasons
+- open5gs-gnb.yaml: gNB configuration
+- open5gs-ue.yaml: UE configuration
 
-| Reason | Cause |
-|---|---|
-| `proof_verification_failed` | Credential invalid or revoked |
-| `credential_revoked_precheck` | Revoked — detected before proof (fast path) |
-| `slice_policy_denied: got=X required=Y` | Wrong network slice |
-| `type_policy_denied: got=X required=Y` | Wrong subscription type |
-| `issuer_not_trusted: issuer=X` | Untrusted credential issuer |
-| `no_credential_mapped` | Unknown SUPI |
-| `sidecar_error: ...` | Verifier unreachable (fail-close) |
+### evaluation/
 
----
+Experimental evaluation suite.
 
-## AUSF C Patch
+- concurrent_stress_test.py: concurrent UE stress test (2/4/5/10 UEs)
+- security_tests.py: security evaluation across five attack scenarios
+- latency_comparison.py: vanilla 5G-AKA vs DID-augmented latency comparison
+- multi_ue_test.py: multi-UE sequential and concurrent tests
+- revocation_test.py: revocation enforcement test
+- run_experiments.py: master experiment runner
+- results/: all CSV and JSON experiment outputs
 
-The patch adds `did_auth_check()` in `nudm-handler.c`:
+### thesis-results.txt
+
+Raw experimental results log captured during thesis evaluation runs.
+
+## Software Installation
+
+### 1. Operating System
+
+Install Kali Linux or Ubuntu 22.04+ with kernel 6.x or newer. Ensure Docker, MongoDB, and Python 3.13 are available before proceeding.
+
+### 2. Dependencies
+
+Install Open5GS, UERANSIM, ACA-Py, and the Python packages required by the sidecar (aiohttp, async libraries). Refer to each upstream project's installation guide for platform-specific instructions.
+
+### 3. Network Stack Components
+
+Open5GS provides the 5G SA core. UERANSIM provides software-defined gNB and UE implementations. The three ACA-Py agents provide the SSI layer. Hyperledger Indy (via von-network or BCovrin) provides the distributed ledger.
+
+### 4. AUSF Patch Compilation
+
+Apply the patch in ausf-patch/nudm-handler.c to the Open5GS source tree, then rebuild with: cd /home/kali/open5gs && ninja -C build src/ausf/open5gs-ausfd
+
+## Configuration
+
+### AUSF Patch Parameters
 
 | Parameter | Value | Purpose |
 |---|---|---|
-| `DID_TIMEOUT_MS` | 15,000ms | Total sidecar call timeout |
-| `DID_CONNECT_TIMEOUT_MS` | 500ms | Connection timeout |
-| `DID_CACHE_TTL_SEC` | 30s | C-level result cache TTL |
-| `DID_CACHE_SIZE` | 16 entries | Max cached SUPIs |
-| `DID_FAIL_OPEN` | 0 (false) | **Fail-close** — deny on any error |
-```bash
-# Compile patched AUSF
-cd /home/kali/open5gs
-ninja -C build src/ausf/open5gs-ausfd
-```
+| DID_TIMEOUT_MS | 15000 | Total time allowed for sidecar response |
+| DID_CONNECT_TIMEOUT_MS | 500 | TCP connection timeout |
+| DID_CACHE_TTL_SEC | 30 | C-level SUPI decision cache TTL |
+| DID_CACHE_SIZE | 16 | Maximum cached decisions |
+| DID_FAIL_OPEN | 0 | Deny on any error (fail-close policy) |
 
----
+### Sidecar Configuration
 
-## UPF Enforcement
+The sidecar accepts the following command-line flags: --ledger local or bcovrin, --cache on or off, --cache-ttl 300, --fail-mode close or open, --port 5000.
 
-When a UE is denied, traffic is blocked at two independent layers:
+### Test UE Profiles
 
-**Layer 1 — Control plane (AUSF):**
-- AUSF returns HTTP 403 FORBIDDEN to AMF
-- AMF sends `Registration Reject [111]` to UE
-- UE is ejected from the core network
+Six test UEs are provisioned in MongoDB, each covering a distinct decision path:
 
-**Layer 2 — User plane (iptables):**
-- Sidecar writes denied SUPI to `/var/tmp/blocked_ues.txt`
-- `ue_ip_map.sh` maps SUPI → IP from SMF logs
-- `upf_enforcer.sh` uses inotifywait — instant rule application < 1 second
-- iptables `DID_BLOCK` chain drops all ICMP + TCP traffic
-Verified:
-ICMP → 100% packet loss
-TCP  → connection timeout
-Unblock → rules removed instantly on file change
+| SUPI | Slice | Status | Expected Decision |
+|---|---|---|---|
+| imsi-001010000000001 | SST:1 | Revoked | Deny: revocation pre-check |
+| imsi-001010000000002 | SST:1 | Active | Allow |
+| imsi-001010000000003 | SST:1 | Active | Allow |
+| imsi-001010000000004 | SST:1 | Active | Allow |
+| imsi-001010000000005 | SST:1 | Active | Allow |
+| imsi-001010000000006 | SST:2 | Active | Deny: slice policy |
 
----
+## Quick Start
 
-## Ledger Configuration
+### Option A: Local Ledger (recommended)
 
-### Local Ledger (Stage 3 — Recommended)
+Run: bash scripts/start-full-stack.sh local, then python3 scripts/setup_credentials.py local.
 
-| Item | Value |
-|---|---|
-| Ledger | von-network (localhost:9000) |
-| Issuer DID | `YbmLV9CGCk8Uq1NAJqvD77` |
-| Schema | `YbmLV9CGCk8Uq1NAJqvD77:2:5g-subscriber:1.0` |
-| Cred Def | `YbmLV9CGCk8Uq1NAJqvD77:3:CL:9:revocable2` |
+### Option B: BCovrin Public Ledger
 
-### BCovrin Public Ledger (Stage 2)
+Run: bash scripts/start-full-stack.sh bcovrin, then python3 scripts/setup_credentials.py bcovrin.
 
-| Item | Value |
-|---|---|
-| Ledger | BCovrin Test (http://test.bcovrin.vonx.io) |
-| Issuer DID | `QTbY98psM6bDviJj9A6JLU` |
-| Schema | `QTbY98psM6bDviJj9A6JLU:2:5g-subscriber:1.0` |
-| Cred Def | `QTbY98psM6bDviJj9A6JLU:3:CL:3132200:revocable` |
+### Sanity Check
 
-### Credential Attributes
+After startup, verify the sidecar is healthy with: curl -s http://localhost:5000/health. Then test a valid UE registration: curl -s -X POST http://localhost:5000/did-auth -H "Content-Type: application/json" -d '{"supi":"imsi-001010000000002"}'. A successful response shows final_decision: true and a per-stage timing breakdown.
 
-| Attribute | Example | Purpose |
-|---|---|---|
-| `supi` | `imsi-001010000000002` | UE identity |
-| `imsi` | `001010000000002` | Network identifier |
-| `network_slice` | `SST:1` | Slice entitlement |
-| `subscription_type` | `5G-SA` | Service type |
-| `issued_by` | `MNO-Local` | Issuer identifier |
+## Authentication Flow
 
----
+1. UE sends NAS Registration Request to gNB.
+2. gNB forwards to AMF over the N2 interface.
+3. AMF invokes AUSF authentication over N12 with the SUCI.
+4. AUSF decrypts the SUCI to recover the SUPI; the patched nudm-handler.c calls did_auth_check(supi).
+5. The sidecar begins the four-stage verification pipeline.
+6. Stage 1 Wallet lookup: credential identifiers retrieved for the SUPI. If none found, the sidecar returns HTTP 403 with no_credential_mapped.
+7. Stage 2 Revocation pre-check: the issuer revocation API is queried. If revoked, denial is returned in approximately 75 ms with credential_revoked_precheck.
+8. Stage 3 DIDComm proof exchange: the verifier sends a proof request to the holder; the holder generates an Anoncreds CL ZKP revealing only SUPI, IMSI, and network slice; the verifier checks the proof against the ledger.
+9. Stage 4 Policy evaluation: verified attributes are checked against per-SUPI rules. Mismatches return HTTP 403 with slice_policy_denied or similar.
+10. Sidecar returns HTTP 200 (allow) or HTTP 403 (deny) with per-stage timing.
+11. Allowed UEs continue through standard 5G-AKA and receive Registration Accept.
+12. Denied UEs receive Registration Reject; the sidecar writes the SUPI to blocked_ues.txt and upf_enforcer.sh applies iptables DROP rules within one second.
+
+## Validation and Testing
+
+### Running the Concurrent Stress Test
+
+Run: cd evaluation && python3 concurrent_stress_test.py. This executes 2, 4, 5, and 10 simultaneous UE registrations under cold and warm cache conditions and reports wall-clock time, success rate, and per-UE latency.
+
+### Running the Security Evaluation
+
+Run: cd evaluation && python3 security_tests.py. This executes five attack scenarios (replay, impersonation, revoked credential reuse, network slice policy bypass, and denial of service) against the running 5G core and confirms each is mitigated by the implemented mechanisms.
+
+### Running the Revocation Pre-check Benchmark
+
+Run: cd evaluation && python3 revocation_test.py. This measures denial latency for revoked credentials with and without the pre-check optimization.
+
+### Running the Latency Comparison
+
+Run: cd evaluation && python3 latency_comparison.py. This compares standard 5G-AKA latency against DID-augmented authentication under cold and warm cache conditions.
 
 ## Experimental Results
 
-### Latency
+### Latency Summary
 
-| Metric | BCovrin | Local Ledger |
+| Authentication Mode | Average Latency | Overhead vs 5G-AKA |
 |---|---|---|
-| DID cold (min) | 4,396ms | 2,421ms |
-| DID cold (avg) | 4,690ms | 2,658ms |
-| DID cold (max) | 5,181ms | 3,069ms |
-| DID warm (cache) | ~0ms | ~0ms |
-| Vanilla 5G auth | 256ms | 256ms |
-| Ledger RTT overhead | +2,033ms vs local | baseline |
-| Local ledger speedup | — | **1.8x faster** |
+| Standard 5G-AKA (baseline) | 256 ms | reference |
+| DID cold local ledger | 2,658 ms | +2,402 ms (x10.4) |
+| DID cold BCovrin public | 4,690 ms | +4,434 ms (x18.3) |
+| DID warm cache hit | under 5 ms | approximately zero |
 
-### Revocation Pre-check
+### Revocation Pre-check Performance
 
-| Scenario | Latency |
-|---|---|
-| Full proof (active credential) | ~2,658ms |
-| Revocation pre-check (revoked) | **75ms** |
-| Speedup | **35x faster** |
-
-### Concurrent UE Stress Test
-
-| Test | Wall Time | Success Rate |
+| Scenario | Average Latency | Mechanism |
 |---|---|---|
-| 2 UEs cold | 10,145ms | 2/2 |
-| 4 UEs cold | 5,128ms | 4/4 |
-| 5 UEs warm (cache) | 25ms | 5/5 |
-| 10 UEs warm (cache) | 34ms | 10/10 |
+| Without pre-check | 2,658 ms | Full DIDComm exchange |
+| Pre-check, cold | 75 ms | Issuer revocation API query |
+| Pre-check, cached | under 5 ms | Local revocation cache |
 
-### Security Evaluation
+The pre-check optimization delivers a 35-fold reduction in denial latency for revoked credentials.
 
-| Attack | Result |
-|---|---|
-| Replay Attack | ✓ Mitigated — nonce-per-proof |
-| Impersonation | ✓ Mitigated — credential binding |
-| Revoked Credential | ✓ Mitigated — ledger revocation registry |
-| Policy Bypass (slice) | ✓ Mitigated — cryptographic policy binding |
-| DoS / Load Attack | ✓ Mitigated — queue limit + fail-close |
+### Concurrent UE Scalability
 
-### All Confirmed Properties
+| Configuration | UEs | Wall Time | Success |
+|---|---|---|---|
+| 2 UEs cold | 2 | 10,145 ms | 2/2 |
+| 4 UEs cold | 4 | 5,128 ms | 4/4 |
+| 5 UEs cold | 5 | 2,498 ms | 5/5 |
+| 5 UEs warm | 5 | 25 ms | 5/5 |
+| 10 UEs warm | 10 | 34 ms | 10/10 |
 
-| Property | Status |
-|---|---|
-| Fail-close on sidecar down | ✓ Confirmed |
-| Revocation enforcement | ✓ Confirmed |
-| Slice policy enforcement | ✓ Confirmed |
-| Issuer trust enforcement | ✓ Confirmed |
-| Traffic blocking (ICMP+TCP) | ✓ Confirmed |
-| Instant block/unblock (<1s) | ✓ Confirmed |
-| Minimal credential disclosure | ✓ By design (ZKP) |
-| Dynamic credential lookup | ✓ Confirmed |
-| Load protection (MAX_QUEUE) | ✓ Confirmed |
+## Security Properties
 
----
+### Five Attack Scenarios, All Mitigated
 
-## Run Experiments
-```bash
-cd evaluation
+| Attack | Result | Primary Mitigation |
+|---|---|---|
+| Replay | Mitigated | Nonce-per-proof in Anoncreds CL |
+| Impersonation | Mitigated | Credential binding in holder wallet |
+| Revoked credential reuse | Mitigated | Ledger revocation registry plus pre-check cache |
+| Network slice policy bypass | Mitigated | Cryptographic attribute binding in VC |
+| Denial of service / load | Mitigated | Queue limit plus concurrency semaphore plus fail-close |
 
-# Latency comparison (vanilla vs DID)
-python3 latency_comparison.py
+### Privacy Properties
 
-# Concurrent stress test
-python3 concurrent_stress_test.py
+The verifier receives only three attributes per proof presentation: SUPI, IMSI, and network slice. The remaining credential attributes (subscription type, issuer identifier) are concealed at the Anoncreds CL cryptographic level. Each proof presentation generates a fresh randomized output, providing proof-layer unlinkability that the standard 5G-AKA protocol does not provide.
 
-# Security evaluation (5 attack scenarios)
-python3 security_tests.py
+## Troubleshooting
 
-# Revocation enforcement
-python3 revocation_test.py
+### Sidecar returns HTTP 400 with JSON parse error
 
-# Multi-UE test
-python3 multi_ue_test.py
-```
+Most common cause: hardcoded credential definition ID or DIDComm connection ID in sidecar.py no longer match the live ledger after a wallet reset. Update the constants in sidecar.py to match the current values from the ACA-Py agent APIs and restart the sidecar.
 
----
+### Issuer agent fails to start with verkey error
 
-## B5G Alignment
+The issuer DID is not registered on the ledger. For the local ledger, register it with a POST request to http://localhost:9000/register containing the issuer seed, alias 5G-Issuer, and role TRUST_ANCHOR.
 
-| B5G Requirement | Our Implementation |
-|---|---|
-| Multi-stakeholder trust | Ledger-based verification — any operator verifies any credential |
-| User-centric identity | UE holds credential in self-sovereign wallet |
-| Zero-trust security | Fresh proof + revocation + policy check on every authentication |
-| Decentralized control | Ledger replaces UDM/HSS as authentication authority |
-| Policy-based slicing | Slice entitlement cryptographically bound in credential |
-| Dynamic trust management | Real-time revocation via ledger registry |
+### Schema not found when creating credential definition
+
+The credential schema has not been published on the local ledger. Publish it with a POST request to http://localhost:8021/schemas containing schema_name 5g-subscriber, schema_version 1.0, and the five attributes supi, imsi, network_slice, subscription_type, issued_by.
+
+### Concurrent stress test shows occasional UE failures under cold load
+
+This is the SQLite Askar wallet's file-level locking, mitigated by the concurrency semaphore that caps simultaneous DIDComm proof exchanges at three. A production deployment would use the PostgreSQL-backed Askar wallet to remove this constraint. See thesis Section 4.9.3.
+
+## References
+
+- Open5GS: https://open5gs.org
+- UERANSIM: https://github.com/aligungr/UERANSIM
+- Hyperledger Aries Cloud Agent Python (ACA-Py): https://github.com/hyperledger/aries-cloudagent-python
+- Hyperledger Indy: https://www.hyperledger.org/projects/hyperledger-indy
+- von-network: https://github.com/bcgov/von-network
+- W3C Decentralized Identifiers (DIDs): https://www.w3.org/TR/did-core/
+- W3C Verifiable Credentials Data Model: https://www.w3.org/TR/vc-data-model/
+- 3GPP TS 33.501, Security architecture and procedures for 5G System: https://www.3gpp.org/ftp/Specs/archive/33_series/33.501/
+
+## PORTAL_METADATA
+
+~~~portal
+slug: did-auth-5g
+title: Decentralized Identity Management for 5G Networks
+summary: A working integration of Self-Sovereign Identity into a real 5G Standalone core, augmenting 5G-AKA with DID-based credential verification, ZKP selective disclosure, real-time revocation pre-check, and cryptographic network slice enforcement.
+startDate: 2025-09-01
+endDate: 2026-04-30
+repositoryUrl: https://github.com/KananOrujov/did-auth-5g
+logos: []
+~~~
